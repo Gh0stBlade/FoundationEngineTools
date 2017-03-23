@@ -255,9 +255,9 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 	outStream.write(reinterpret_cast<char*>(&offsetBoneIndexList), sizeof(unsigned int));
 	outStream.write(reinterpret_cast<char*>(&offsetBoneIndexList), sizeof(unsigned int));//Lodinfo!
 	outStream.write(reinterpret_cast<char*>(&offsetIndexBuffer), sizeof(unsigned int));
-	unsigned short numFaceGroups = newFaceGroups.size();
+	unsigned short numFaceGroups = static_cast<unsigned short>(newFaceGroups.size());
 	outStream.write(reinterpret_cast<char*>(&numFaceGroups), sizeof(unsigned short));
-	unsigned short numMeshGroups = newMeshGroups.size();
+	unsigned short numMeshGroups = static_cast<unsigned short>(newMeshGroups.size());
 	outStream.write(reinterpret_cast<char*>(&numMeshGroups), sizeof(unsigned short));
 
 	unsigned short numBones = trasSkel.m_bones.size();
@@ -309,21 +309,17 @@ void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup& currentMeshGroup, 
 
 	std::vector<int> boneRemapTable;
 	unsigned int lastSplit = 0;
-	unsigned short maxFaceIndex = 0;
-	unsigned short minFaceIndex = USHRT_MAX;
+
+	//Used for tracking how many vertices have currently been processed
+	unsigned short maxVertexIndex = 0;
 	
 	for (unsigned int i = 0; i < faceGroup.m_numFaces * 3; i++)
 	{
 		unsigned short vertexIndex = indexBuffer[i];
 
-		if (minFaceIndex > vertexIndex)
+		if (maxVertexIndex < vertexIndex)
 		{
-			minFaceIndex = vertexIndex;
-		}
-
-		if (maxFaceIndex < vertexIndex)
-		{
-			maxFaceIndex = vertexIndex;
+			maxVertexIndex = vertexIndex;
 		}
 
 		unsigned char* vertex = (unsigned char*)tempVertexBuffer + (vertDeclHeader.m_vertexStride*(indexBuffer[i])) + skinIndexDecl->m_position;
@@ -356,7 +352,7 @@ void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup& currentMeshGroup, 
 			TRDE::FaceGroup newFaceGroup = faceGroup;
 			newFaceGroup.m_numFaces = ((i - lastSplit)/3);
 
-			newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numFaces, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newMeshGroup.m_numVertices, maxFaceIndex));
+			newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numFaces, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newMeshGroup.m_numVertices, maxVertexIndex));
 
 			newMeshGroups.push_back(newMeshGroup);
 			newFaceGroups.push_back(newFaceGroup);
@@ -380,7 +376,7 @@ void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup& currentMeshGroup, 
 		TRDE::MeshGroup newMeshGroup = currentMeshGroup;
 		newMeshGroup.m_numFaceGroups = 1;
 		TRDE::FaceGroup newFaceGroup = faceGroup;
-		newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numFaces, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newMeshGroup.m_numVertices, maxFaceIndex));
+		newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numFaces, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newMeshGroup.m_numVertices, maxVertexIndex));
 
 
 		newVertexDeclarationHeaders.push_back(vertDeclHeader);
@@ -400,7 +396,7 @@ void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup& currentMeshGroup, 
 		newMeshGroup.m_numFaceGroups = 1;
 		TRDE::FaceGroup newFaceGroup = faceGroup;
 		newFaceGroup.m_numFaces = (((faceGroup.m_numFaces * 3) - lastSplit) / 3);
-		newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numFaces, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newMeshGroup.m_numVertices, maxFaceIndex));
+		newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numFaces, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newMeshGroup.m_numVertices, maxVertexIndex));
 
 		newMeshGroups.push_back(newMeshGroup);
 		newFaceGroups.push_back(newFaceGroup);
@@ -422,7 +418,7 @@ unsigned char Converter::addToBoneRemapTable(std::vector<int>& boneRemapTable, c
 		if (boneRemapTable[i] == boneIndex)
 		{
 			//Already in bone remap table, no need to add the bone index, just return it!
-			return i;
+			return static_cast<unsigned char>(i);
 		}
 	}
 
@@ -500,7 +496,7 @@ char* Converter::GenerateVertexBuffer(unsigned int numFaces, unsigned short* ind
 	assert(maxVertexIndex < USHRT_MAX);
 
 	unsigned short* indexBufferRemapTable = new unsigned short[maxVertexIndex+1];
-	std::memset((char*)indexBufferRemapTable, USHRT_MAX, (maxVertexIndex+1) * sizeof(unsigned short));//TODO remove cast
+	std::memset(indexBufferRemapTable, USHRT_MAX, (maxVertexIndex+1) * sizeof(unsigned short));
 
 	char* remappedVertexBuffer = new char[(maxVertexIndex + 1)*vertexStride];
 
@@ -590,6 +586,5 @@ void Converter::decodeNormal(char* normalPointer)
 //Credit: UnpackTRU (Dunsan), this is customised for C++ with endian swap.
 int Converter::ExtractBit(unsigned char* bytes, int bitIndex)
 {
-	int bit = (bytes[bitIndex >> 3] & (1 << (7 - bitIndex % 8))) != 0 ? 1 : 0;
-	return bit;
+	return (bytes[bitIndex >> 3] & (1 << (7 - bitIndex % 8))) != 0 ? 1 : 0;
 }

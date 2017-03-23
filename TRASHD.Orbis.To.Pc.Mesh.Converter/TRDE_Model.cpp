@@ -106,7 +106,6 @@ void TRDE::loadSkeleton(TRDE::Skeleton& skeleton)
 {
 
 	std::ifstream inputStream3("skeleton.trdemesh", std::ios::binary);
-	std::ofstream outStream("bones.bin", std::ios::binary);
 
 	if (!inputStream3.good())
 	{
@@ -133,34 +132,26 @@ void TRDE::loadSkeleton(TRDE::Skeleton& skeleton)
 	inputStream3.read(reinterpret_cast<char*>(&offsetBoneInfo2), sizeof(unsigned int));
 
 	inputStream3.seekg(((28 + numRelocations * 8) + numRelocations2 * 4), SEEK_SET);
-	meshBase = inputStream3.tellg();
+	meshBase = static_cast<unsigned int>(inputStream3.tellg());
 
 	inputStream3.seekg(meshBase + offsetBoneInfo - 8, SEEK_SET);
 
 	inputStream3.read(reinterpret_cast<char*>(&numBones), sizeof(unsigned int));
 	inputStream3.seekg(meshBase + offsetBoneInfo2, SEEK_SET);
-	printf("%i\n", (unsigned int)inputStream3.tellg());
+
 	for (unsigned int i = 0; i < numBones; i++)
 	{
 		TRDE::Bone bone;
 
-		outStream.seekp(0x20, SEEK_CUR);
 		
 		inputStream3.seekg(0x20, SEEK_CUR);
 		inputStream3.read(reinterpret_cast<char*>(&bone.m_pos[0]), sizeof(float));
 		inputStream3.read(reinterpret_cast<char*>(&bone.m_pos[1]), sizeof(float));
 		inputStream3.read(reinterpret_cast<char*>(&bone.m_pos[2]), sizeof(float));
-		outStream.write(reinterpret_cast<char*>(&bone.m_pos[0]), sizeof(float));
-		outStream.write(reinterpret_cast<char*>(&bone.m_pos[1]), sizeof(float));
-		outStream.write(reinterpret_cast<char*>(&bone.m_pos[2]), sizeof(float));
-		outStream.seekp(10, SEEK_CUR);
 		unsigned short temp = 0xFFFF;
-		outStream.write(reinterpret_cast<char*>(&temp), sizeof(unsigned short));
 		inputStream3.seekg(12, SEEK_CUR);
 		int parent;
 		inputStream3.read(reinterpret_cast<char*>(&parent), sizeof(int));
-		outStream.write(reinterpret_cast<char*>(&parent), sizeof(int));
-		outStream.seekp(4, SEEK_CUR);
 		if (skeleton.m_bones.size() > parent)
 		{
 			bone.m_pos[0] += skeleton.m_bones[parent].m_pos[0];
@@ -172,8 +163,6 @@ void TRDE::loadSkeleton(TRDE::Skeleton& skeleton)
 	}
 
 	inputStream3.close();
-
-	outStream.close();
 }
 
 std::vector<TRDE::VertexDeclaration> TRDE::ReorderVertDecls(std::vector<TRDE::VertexDeclaration>& vertDecl, TRDE::MeshGroup & currentMeshGroup, char* vertexBuffer, TRDE::VertexDeclarationHeader& vertDeclHeader)
@@ -340,7 +329,7 @@ std::vector<TRDE::VertexDeclaration> TRDE::ReorderVertDecls(std::vector<TRDE::Ve
 
 	delete[] tempVertexBuffer;
 
-	vertDeclHeader.m_componentCount = reorderedVertexDecls.size();
+	vertDeclHeader.m_componentCount = static_cast<unsigned short>(reorderedVertexDecls.size());
 	vertDeclHeader.m_vertexStride = vertexStride;
 
 	return reorderedVertexDecls;

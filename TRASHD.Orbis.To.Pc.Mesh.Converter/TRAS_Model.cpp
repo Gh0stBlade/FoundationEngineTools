@@ -18,7 +18,7 @@ void TRAS::loadModel(TRAS::Model& model, std::ifstream& stream)
 	stream.read(reinterpret_cast<char*>(&meshStart), sizeof(meshStart));
 
 	stream.seekg(((20 + numRelocations * 8) + numRelocations2 * 4) + meshStart, SEEK_SET);
-	long meshBase = stream.tellg();
+	unsigned int meshBase = static_cast<unsigned int>(stream.tellg());
 
 	stream.read(reinterpret_cast<char*>(&model.m_meshHeader), sizeof(TRAS::MeshHeader));
 
@@ -144,7 +144,7 @@ void TRAS::loadSkeleton(TRAS::Skeleton & skeleton)
 	inputStream2.read(reinterpret_cast<char*>(&offsetBoneInfo2), sizeof(unsigned int));
 
 	inputStream2.seekg(((20 + numRelocations * 8) + numRelocations2 * 4), SEEK_SET);
-	long meshBase = inputStream2.tellg();
+	unsigned int meshBase = static_cast<unsigned int>(inputStream2.tellg());
 
 	inputStream2.seekg(meshBase + offsetBoneInfo - 4, SEEK_SET);
 
@@ -153,8 +153,6 @@ void TRAS::loadSkeleton(TRAS::Skeleton & skeleton)
 	inputStream2.seekg(12, SEEK_CUR);
 
 	inputStream2.seekg(meshBase + offsetBoneInfo2, SEEK_SET);
-	printf("%i\n", (unsigned int)inputStream2.tellg());
-	///@FIXME need to add to get world bone pos
 	for (unsigned int i = 0; i < numBones; i++)
 	{
 		TRAS::Bone bone;
