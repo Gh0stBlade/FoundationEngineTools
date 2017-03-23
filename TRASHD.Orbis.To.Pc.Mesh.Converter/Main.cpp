@@ -4,7 +4,6 @@
 #include "TRAS_Model.h"
 #include "TRDE_Model.h"
 
-#include "Merger.h"
 #include "Converter.h"
 
 #include <cassert>
