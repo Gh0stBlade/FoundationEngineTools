@@ -111,7 +111,7 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		boneRemapTableStart += test * sizeof(unsigned int);
 		boneRemapTableStart = (((boneRemapTableStart + 15) & ~15));
 		//Need to do offsetVertexBuff, offsetFVF and vertCount
-		assert(false);
+		//assert(false);
 		outStream.seekp(36, SEEK_CUR);
 	}
 
@@ -546,20 +546,22 @@ __inline float Converter::GetDistanceBetweenBones(TRDE::Bone& bone, TRAS::Bone& 
 //Credit: UnpackTRU (Dunsan), this is customised for C++ with endian swap.
 void Converter::decodeNormal(char* normalPointer)
 {
+#if !ENDIAN_BIG
 	unsigned char reversedNormal[4];
 	reversedNormal[0] = *(unsigned char*)(normalPointer + 3);
 	reversedNormal[1] = *(unsigned char*)(normalPointer + 2);
 	reversedNormal[2] = *(unsigned char*)(normalPointer + 1);
 	reversedNormal[3] = *(unsigned char*)(normalPointer + 0);
+#endif
 
-#if 0
-	float extractedNormal[3];
-	for (unsigned int i = 0; i < 3; i++)
+	int extractedNormal[3];
+	float convertedNormal[3];
+	for (unsigned char i = 0; i < 3; i++)
 	{
 		extractedNormal[i] = 0;
 		for (int j = 0; j < 10; j++)
 		{
-			extractedNormal[i] |= ExtractBit(reversedNormal, (9 - j) + ((10*i)+2) << j;
+			extractedNormal[i] |= ExtractBit(reversedNormal, (9 - j) + ((i*10)+2)) << j;
 		}
 
 		if (extractedNormal[i] >= 512)
@@ -567,64 +569,22 @@ void Converter::decodeNormal(char* normalPointer)
 			extractedNormal[i] -= 1024;
 		}
 
-		extractedNormal[3-i] = (extractedNormal[i]) / 511.0f;
+#if ENDIAN_BIG
+		convertedNormal[i] = (static_cast<float>(extractedNormal[i]) / 511.0f);
+#else
+		convertedNormal[2-i] = (static_cast<float>(extractedNormal[i]) / 511.0f);
+#endif
 	}
 
-	float l = std::sqrtf(extractedNormal[0] * extractedNormal[0] + extractedNormal[1] * extractedNormal[1] + extractedNormal[2] * extractedNormal[2]);
-
+	//Normalise
+	float length = std::sqrtf(convertedNormal[0] * convertedNormal[0] + convertedNormal[1] * convertedNormal[1] + convertedNormal[2] * convertedNormal[2]);
 	for (unsigned int i = 0; i < 3; i++)
 	{
-		convertedNormal[0] = convertedNormal[0] / l;
-	}
-#endif
-
-	int a = 0;
-	for (int i = 0; i < 10; i++)
-	{
-		a |= ExtractBit(reversedNormal, (9 - i) + 2) << i;
-	}
-	if (a >= 512)
-	{
-		a -= 1024;
+		normalPointer[i] = static_cast<unsigned char>((((convertedNormal[i] / length) * 127.0f) + 127.0f));
 	}
 
-	int b = 0;
-	for (int i = 0; i < 10; i++)
-	{
-		b |= ExtractBit(reversedNormal, (9 - i) + 12) << i;
-	}
-
-	if (b >= 512)
-	{
-		b -= 1024;
-	}
-
-	int c = 0;
-	for (int i = 0; i < 10; i++)
-	{
-		c |= ExtractBit(reversedNormal, (9 - i) + 22) << i;
-	}
-
-	if (c >= 512)
-	{
-		c -= 1024;
-	}
-
-	float convertedNormal[3];
-	convertedNormal[0] = (c) / 511.0f;
-	convertedNormal[1] = (b) / 511.0f;
-	convertedNormal[2] = (a) / 511.0f;
-	float l = std::sqrtf(convertedNormal[0] * convertedNormal[0] + convertedNormal[1] * convertedNormal[1] + convertedNormal[2] * convertedNormal[2]);
-
-	convertedNormal[0] = convertedNormal[0] / l;
-	convertedNormal[1] = convertedNormal[1] / l;
-	convertedNormal[2] = convertedNormal[2] / l;
-
-	//Normal is now float compatible with OpenGL
-	normalPointer[3] = 0x7F;//Sign
-	normalPointer[2] = static_cast<unsigned char>(((convertedNormal[2] * 127.0f) + 127.0f));
-	normalPointer[1] = static_cast<unsigned char>(((convertedNormal[1] * 127.0f) + 127.0f));
-	normalPointer[0] = static_cast<unsigned char>(((convertedNormal[0] * 127.0f) + 127.0f));
+	//Sign
+	normalPointer[3] = SCHAR_MAX;
 }
 
 //Credit: UnpackTRU (Dunsan), this is customised for C++ with endian swap.
