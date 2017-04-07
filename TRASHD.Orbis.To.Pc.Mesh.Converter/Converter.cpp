@@ -8,9 +8,7 @@
 
 const unsigned int MAX_BONES_PER_MESH_GROUP = 42;
 //TODO bi normal/tangent calculations
-#define REMAP_TO_PC_SKELETON (1)
 
-//TODO: Optimise vertex buffer.
 //TODO: Pull relocation data into TRDE result file, move bones accordingly
 void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 {
@@ -25,8 +23,9 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 	std::vector<TRDE::VertexDeclarationHeader> newVertexDeclarationHeaders;
 	std::vector<std::vector<TRDE::VertexDeclaration>> newVertexDeclarations;
 
-	//Process all mesh groups, PC engine has a limit of 42 bones per mesh group so here we split the mesh/face groups accordingly if necessary.
-	unsigned int currentFaceGroup = 0;
+	//Setup our vertexDeclList, will allow us to easily convert specific vertex attribute data later on without the use of excessive loops.
+	VertexDeclarationList vertDeclList;
+
 	for (unsigned int i = 0; i < model.m_meshGroups.size(); i++)
 	{
 		TRDE::MeshGroup& currentMeshGroup = model.m_meshGroups[i];
@@ -34,25 +33,77 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		//Get the skin indices vertex decl info
 		TRDE::VertexDeclarationHeader& vertDeclHeader = model.m_vertexDeclarationHeaders[i];
 		std::vector<TRDE::VertexDeclaration>& vertDecls = model.m_vertexDeclarations[i];
-		TRDE::VertexDeclaration* skinIndexDecl = nullptr;
 
 		for (unsigned int j = 0; j < vertDeclHeader.m_componentCount; j++)
 		{
-			TRDE::VertexDeclaration& vertDecl = vertDecls[j];
-			if (vertDecl.m_componentNameHashed == 0x5156D8D3)
+			TRDE::VertexDeclaration* vertDecl = &vertDecls[j];
+
+			switch (vertDecl->m_componentNameHashed)
 			{
-				skinIndexDecl = &vertDecl;
+			case 0xD2F7D823://Position
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::POSITION] = vertDecl;
+				break;
+			case 0x36F5E414://Normal
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::NORMAL] = vertDecl;
+				break;
+			case 0x3E7F6149://TessellationNormal
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::TESSELLATION_NORMAL] = vertDecl;
+				break;
+			case 0xF1ED11C3://Tangent
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::TANGENT] = vertDecl;
+				break;
+			case 0x64A86F01://Binormal
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::BI_NORMAL] = vertDecl;
+				break;
+			case 0x9B1D4EA://PackedNTB
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::PACKED_NTB] = vertDecl;
+				break;
+			case 0x48E691C0://SkinWeights
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::SKIN_WEIGHTS] = vertDecl;
+				break;
+			case 0x5156D8D3://SkinIndices
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::SKIN_INDICES] = vertDecl;
+				break;
+			case 0x7E7DD623://Color1
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::COLOR_1] = vertDecl;
+				break;
+			case 0x733EF0FA://Color2
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::COLOR_2] = vertDecl;
+				break;
+			case 0x8317902A://Texcoord1
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::TEXCOORD1] = vertDecl;
+				break;
+			case 0x8E54B6F3://Texcoord2
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::TEXCOORD2] = vertDecl;
+				break;
+			case 0x8A95AB44://Texcoord3
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::TEXCOORD3] = vertDecl;
+				break;
+			case 0x94D2FB41://Texcoord4
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::TEXCOORD4] = vertDecl;
+				break;
+			case 0xE7623ECF://InstanceID
+				vertDeclList.m_vertDecls[kVertexAttributeTypes::INSTANCE_ID] = vertDecl;
+				break;
+			default:
 				break;
 			}
 		}
 
-		if (skinIndexDecl)//Todo mesh header flag
+		//Used for tracking current processing face group.
+		unsigned int currentFaceGroup = 0;
+
+		//Tomb Raider Definitive Edition (PS4) Mesh files have no bone remap table.
+		//Tomb Raider (PC) Mesh files do have bone remap tables. Each "mesh group" supports a maximum of 42 bones for skinning.
+		//Here we split PS4 face/mesh groups accordingly.
+		//Note: We only need to do it for skinned meshes
+		if (vertDeclList.m_vertDecls[kVertexAttributeTypes::SKIN_WEIGHTS] != nullptr && vertDeclList.m_vertDecls[kVertexAttributeTypes::SKIN_INDICES] != nullptr)//Todo mesh header flag i think it means static = 2, skinned/skeletal = 0, tress fx = 1
 		{
-			//For each face group in this mesh group, let's generate the bone remap table.
+			//For each face group in this mesh group, let's generate the bone remap table and new split, vertex buffers.
 			for (unsigned int j = 0; j < currentMeshGroup.m_numFaceGroups; j++, currentFaceGroup++)
 			{
 				TRDE::FaceGroup& faceGroup = model.m_faceGroups[currentFaceGroup];
-				Converter::GenerateBoneRemapTable(currentMeshGroup, faceGroup, vertDeclHeader, model.m_vertexBuffers[i], reinterpret_cast<unsigned short*>(model.m_indexBuffers[currentFaceGroup]), skinIndexDecl, boneRemapTables, newMeshGroups, newFaceGroups, newIndexBuffers, newVertexBuffers, newVertexDeclarationHeaders, vertDecls, newVertexDeclarations);
+				Converter::GenerateBoneRemapTable(currentMeshGroup, faceGroup, vertDeclHeader, model.m_vertexBuffers[i], reinterpret_cast<unsigned short*>(model.m_indexBuffers[currentFaceGroup]), vertDeclList, boneRemapTables, newMeshGroups, newFaceGroups, newIndexBuffers, newVertexBuffers, newVertexDeclarationHeaders, vertDecls, newVertexDeclarations);
 			}
 		}
 		else
@@ -90,7 +141,7 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		TRAS::loadSkeleton(trasSkel);
 	}
 
-	//Write bone index list
+	//Write bone index list, not sure what this is used for yet.
 	for (size_t i = 0; i < trasSkel.m_bones.size(); i++)
 	{
 		outStream.write(reinterpret_cast<char*>(&i), sizeof(unsigned int));
@@ -152,36 +203,6 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		for (size_t j = 0; j < newVertexDeclarations[i].size(); j++)
 		{
 			outStream.write(reinterpret_cast<char*>(&newVertexDeclarations[i][j]), sizeof(TRDE::VertexDeclaration));
-			
-			switch (newVertexDeclarations[i][j].m_componentNameHashed)
-			{
-			case 0x36F5E414://Normal
-				//Convert normals
-				for (unsigned int k = 0; k < currentMeshGroup.m_numVertices; k++)
-				{
-					char* normalPointer = newVertexBuffers[i] + (k*vertDeclHeader.m_vertexStride) + newVertexDeclarations[i][j].m_position;
-					decodeNormal(normalPointer);
-				}
-				break;
-			case 0xF1ED11C3://Tangent
-				//Convert tangents
-				for (unsigned int k = 0; k < currentMeshGroup.m_numVertices; k++)
-				{
-					char* tangentPointer = newVertexBuffers[i] + (k*vertDeclHeader.m_vertexStride) + newVertexDeclarations[i][j].m_position;
-					//decodeNormal(tangentPointer);
-				}
-				break;
-			case 0x64A86F01://Bi Normal
-				//Bi normals
-				for (unsigned int k = 0; k < currentMeshGroup.m_numVertices; k++)
-				{
-					char* biNormalPointer = newVertexBuffers[i] + (k*vertDeclHeader.m_vertexStride) + newVertexDeclarations[i][j].m_position;
-					//decodeNormal(biNormalPointer);
-				}
-				break;
-			default:
-				break;
-			}
 		}
 		
 		char* vertexBuffer = newVertexBuffers[i];
@@ -198,7 +219,7 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 	offsetIndexBuffer = static_cast<unsigned int>(outStream.tellp());
 	
 	//Index buffers
-	currentFaceGroup = 0;
+	unsigned int currentFaceGroup = 0;
 	for (size_t i = 0; i < newMeshGroups.size(); i++)
 	{
 		TRDE::MeshGroup& currentMeshGroup = newMeshGroups[i];
@@ -299,7 +320,7 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 	TRDE::destroyModel(model);
 }
 
-void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup& currentMeshGroup, const TRDE::FaceGroup& faceGroup, const TRDE::VertexDeclarationHeader& vertDeclHeader, const char* vertexBuffer, unsigned short* indexBuffer, TRDE::VertexDeclaration* skinIndexDecl, std::vector<std::vector<int>>& boneRemapTables, std::vector<TRDE::MeshGroup>& newMeshGroups, std::vector<TRDE::FaceGroup>& newFaceGroups, std::vector<unsigned short*>& newIndexBuffers, std::vector<char*>& newVertexBuffers, std::vector<TRDE::VertexDeclarationHeader>& newVertexDeclarationHeaders, std::vector<TRDE::VertexDeclaration>& vertDecls, std::vector<std::vector<TRDE::VertexDeclaration>>& newVertexDeclarations)
+void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup & currentMeshGroup, const TRDE::FaceGroup & faceGroup, const TRDE::VertexDeclarationHeader & vertDeclHeader, const char * vertexBuffer, unsigned short * indexBuffer, const VertexDeclarationList & vertDeclList, std::vector<std::vector<int>>& boneRemapTables, std::vector<TRDE::MeshGroup>& newMeshGroups, std::vector<TRDE::FaceGroup>& newFaceGroups, std::vector<unsigned short*>& newIndexBuffers, std::vector<char*>& newVertexBuffers, std::vector<TRDE::VertexDeclarationHeader>& newVertexDeclarationHeaders, std::vector<TRDE::VertexDeclaration>& vertDecls, std::vector<std::vector<TRDE::VertexDeclaration>>& newVertexDeclarations)
 {
 	char* tempVertexBuffer = new char[vertDeclHeader.m_vertexStride*currentMeshGroup.m_numVertices];
 	std::memcpy(tempVertexBuffer, vertexBuffer, vertDeclHeader.m_vertexStride*currentMeshGroup.m_numVertices);
@@ -312,7 +333,7 @@ void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup& currentMeshGroup, 
 
 	//Used for tracking how many vertices have currently been processed
 	unsigned short maxVertexIndex = 0;
-	
+
 	for (unsigned int i = 0; i < faceGroup.m_numFaces * 3; i++)
 	{
 		unsigned short vertexIndex = indexBuffer[i];
@@ -322,24 +343,26 @@ void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup& currentMeshGroup, 
 			maxVertexIndex = vertexIndex;
 		}
 
-		unsigned char* vertex = (unsigned char*)tempVertexBuffer + (vertDeclHeader.m_vertexStride*(indexBuffer[i])) + skinIndexDecl->m_position;
+		unsigned char* vertexSkinIndices = (unsigned char*)tempVertexBuffer + (vertDeclHeader.m_vertexStride*(indexBuffer[i])) + vertDeclList.m_vertDecls[kVertexAttributeTypes::SKIN_INDICES]->m_position;
+		char* vertexNormals = tempVertexBuffer + (vertDeclHeader.m_vertexStride*(indexBuffer[i])) + vertDeclList.m_vertDecls[kVertexAttributeTypes::NORMAL]->m_position;
 
 		//Sometimes index buffers may use the same vertex more than once.
-		//Here we prevent this with a vertex visitation table.
+		//Here we prevent remapping the same vertex twice with a vertex visitation table.
 		if (!vertexVisitationTable[vertexIndex])
 		{
 			for (unsigned char j = 0; j < 4; j++)
 			{
-				*(vertex + j) = addToBoneRemapTable(boneRemapTable, *(vertex + j));
-				assert(*(vertex + j) < boneRemapTable.size());
+				*(vertexSkinIndices + j) = addToBoneRemapTable(boneRemapTable, *(vertexSkinIndices + j));
+				assert(*(vertexSkinIndices + j) < boneRemapTable.size());
 			}
+
+			decodeNormal(vertexNormals);
 
 			vertexVisitationTable[vertexIndex] = true;
 		}
 
 #if 1
-		//TODO: should not be > invalid case!
-		if (boneRemapTable.size() + 2 >= MAX_BONES_PER_MESH_GROUP && !(i%3))
+		if (boneRemapTable.size() + 2 >= MAX_BONES_PER_MESH_GROUP && !(i % 3))
 		{
 			std::cout << "Warning: face group is using too many bones! Expected <= " << MAX_BONES_PER_MESH_GROUP << " Got: " << boneRemapTable.size() << std::endl;
 
@@ -350,7 +373,7 @@ void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup& currentMeshGroup, 
 			TRDE::MeshGroup newMeshGroup = currentMeshGroup;
 			newMeshGroup.m_numFaceGroups = 1;
 			TRDE::FaceGroup newFaceGroup = faceGroup;
-			newFaceGroup.m_numFaces = ((i - lastSplit)/3);
+			newFaceGroup.m_numFaces = ((i - lastSplit) / 3);
 
 			newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numFaces, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newMeshGroup.m_numVertices, maxVertexIndex));
 
@@ -367,44 +390,29 @@ void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup& currentMeshGroup, 
 #endif
 	}
 
+	boneRemapTables.push_back(boneRemapTable);
+	boneRemapTable.clear();
+
+	//Add new mesh group
+	TRDE::MeshGroup newMeshGroup = currentMeshGroup;
+	newMeshGroup.m_numFaceGroups = 1;
+	TRDE::FaceGroup newFaceGroup = faceGroup;
+
 	if (lastSplit == 0)
 	{
-		boneRemapTables.push_back(boneRemapTable);
-		boneRemapTable.clear();
-
-		//Add new mesh group
-		TRDE::MeshGroup newMeshGroup = currentMeshGroup;
-		newMeshGroup.m_numFaceGroups = 1;
-		TRDE::FaceGroup newFaceGroup = faceGroup;
-		newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numFaces, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newMeshGroup.m_numVertices, maxVertexIndex));
-
-
-		newVertexDeclarationHeaders.push_back(vertDeclHeader);
-		newVertexDeclarations.push_back(vertDecls);
-		newMeshGroups.push_back(newMeshGroup);
-		newFaceGroups.push_back(newFaceGroup);
 		newIndexBuffers.push_back(indexBuffer);
 	}
 	else
 	{
-#if 1
-		boneRemapTables.push_back(boneRemapTable);
-		boneRemapTable.clear();
-
-		//Add new mesh group
-		TRDE::MeshGroup newMeshGroup = currentMeshGroup;
-		newMeshGroup.m_numFaceGroups = 1;
-		TRDE::FaceGroup newFaceGroup = faceGroup;
 		newFaceGroup.m_numFaces = (((faceGroup.m_numFaces * 3) - lastSplit) / 3);
-		newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numFaces, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newMeshGroup.m_numVertices, maxVertexIndex));
-
-		newMeshGroups.push_back(newMeshGroup);
-		newFaceGroups.push_back(newFaceGroup);
 		newIndexBuffers.push_back(indexBuffer + lastSplit);
-		newVertexDeclarationHeaders.push_back(vertDeclHeader);
-		newVertexDeclarations.push_back(vertDecls);
-#endif
 	}
+
+	newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numFaces, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newMeshGroup.m_numVertices, maxVertexIndex));
+	newVertexDeclarationHeaders.push_back(vertDeclHeader);
+	newVertexDeclarations.push_back(vertDecls);
+	newMeshGroups.push_back(newMeshGroup);
+	newFaceGroups.push_back(newFaceGroup);
 
 	delete[] vertexVisitationTable;
 	delete[] tempVertexBuffer;
@@ -487,7 +495,7 @@ void Converter::GenerateGlobalBoneRemapTable(std::vector<int>& boneRemapTable, s
 
 
 //When we split meshes, we must re-index both the index and vertex buffer, so they're relative to 0.
-char* Converter::GenerateVertexBuffer(unsigned int numFaces, unsigned short* indexBuffer, char* vertexBuffer, unsigned int vertexStride, unsigned long long& resultVertexCount, unsigned short maxVertexIndex)
+char* Converter::GenerateVertexBuffer(unsigned int numTris, unsigned short* indexBuffer, char* vertexBuffer, unsigned int vertexStride, unsigned long long& resultVertexCount, unsigned short maxVertexIndex)
 {
 	//HACK: Since we copy/duplicate all mesh group properties, we must hack the vertex count back to 0. This prevents incorrect initial vertex count whilst avoiding two vars and a copy back to resultVertexCount.
 	resultVertexCount = 0;
@@ -500,7 +508,7 @@ char* Converter::GenerateVertexBuffer(unsigned int numFaces, unsigned short* ind
 
 	char* remappedVertexBuffer = new char[(maxVertexIndex + 1)*vertexStride];
 
-	for (unsigned int i = 0; i < numFaces * 3; i++)
+	for (unsigned int i = 0; i < numTris * 3; i++)
 	{
 		//Vertex not already remapped! Remap it!
 		if (indexBufferRemapTable[indexBuffer[i]] == USHRT_MAX)
@@ -523,7 +531,7 @@ char* Converter::GenerateVertexBuffer(unsigned int numFaces, unsigned short* ind
 
 #if _DEBUG && 0
 	//Checks for out of range vertex indices
-	for (unsigned int i = 0; i < numFaces * 3; i++)
+	for (unsigned int i = 0; i < numTris * 3; i++)
 	{
 		unsigned short* test = &indexBuffer[i];
 		assert(indexBuffer[i] < resultVertexCount);
