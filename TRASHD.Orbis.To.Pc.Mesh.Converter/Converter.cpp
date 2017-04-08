@@ -7,6 +7,7 @@
 #include <climits>
 
 const unsigned int MAX_BONES_PER_MESH_GROUP = 42;
+const unsigned char NUM_BONE_INFLUENCES_PER_VERTEX = 4;
 //TODO bi normal/tangent calculations
 
 //TODO: Pull relocation data into TRDE result file, move bones accordingly
@@ -122,12 +123,6 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		}
 	}
 
-	model.m_meshHeader.m_fileVersion = 0x0E01;
-	outStream.write(reinterpret_cast<char*>(&model.m_meshHeader), 112);
-	outStream.seekp(48, SEEK_CUR);
-
-	unsigned int offsetBoneIndexList = static_cast<unsigned int>(outStream.tellp());
-
 	//Load TRAS/TRDE skeleton
 	TRDE::Skeleton skeleton;
 	if (model.m_meshHeader.m_primitiveDrawType > 0)
@@ -141,30 +136,18 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		TRAS::loadSkeleton(trasSkel);
 	}
 
+	//+16 unknown? lod info?
+	unsigned int offsetBoneIndexList = alignOffset(sizeof(TRAS::MeshHeader), 15) + 16;
+	outStream.seekp(offsetBoneIndexList, SEEK_SET);
+
 	//Write bone index list, not sure what this is used for yet.
 	for (size_t i = 0; i < trasSkel.m_bones.size(); i++)
 	{
 		outStream.write(reinterpret_cast<char*>(&i), sizeof(unsigned int));
 	}
-	outStream.seekp(((static_cast<unsigned int>(outStream.tellp()) + 15) & ~15), SEEK_SET);
 
-	unsigned int offsetMeshGroups = static_cast<unsigned int>(outStream.tellp());
-	unsigned int boneRemapTableStart = offsetMeshGroups + newMeshGroups.size() * sizeof(TRAS::MeshGroup);
-
-	for (size_t i = 0; i < newMeshGroups.size(); i++)
-	{
-		TRDE::MeshGroup& currentMeshGroup = newMeshGroups[i];
-		unsigned short test = boneRemapTables.size() > 0 ? boneRemapTables[i].size() : 0;
-		outStream.write(reinterpret_cast<char*>(&currentMeshGroup.m_numFaceGroups), sizeof(unsigned int));
-		outStream.write(reinterpret_cast<char*>(&currentMeshGroup.m_lodIndex), sizeof(unsigned short));
-		outStream.write(reinterpret_cast<char*>(&test), sizeof(unsigned short));
-		outStream.write(reinterpret_cast<char*>(&boneRemapTableStart), sizeof(unsigned int));
-		boneRemapTableStart += test * sizeof(unsigned int);
-		boneRemapTableStart = (((boneRemapTableStart + 15) & ~15));
-		//Need to do offsetVertexBuff, offsetFVF and vertCount
-		//assert(false);
-		outStream.seekp(36, SEEK_CUR);
-	}
+	//We won't write the mesh groups now because we don't have enough information about the vertex buffers
+	unsigned int offsetMeshGroups = alignOffset(offsetBoneIndexList + (sizeof(unsigned int) * trasSkel.m_bones.size()), 15);
 
 	//Generate TRDE Skeleton to TRAS Skeleton bone remap table.
 	std::vector<int> skeletonRemapTable;
@@ -181,17 +164,22 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		}
 	}
 
+	unsigned int offsetBoneRemapTables = offsetMeshGroups + newMeshGroups.size() * sizeof(TRAS::MeshGroup);
+	outStream.seekp(offsetBoneRemapTables, SEEK_SET);
+
 	//Writing the bone remap tables.
 	for (size_t i = 0; i < boneRemapTables.size(); i++)
 	{
+		//newMeshGroups[i].m_
 		for (size_t j = 0; j < boneRemapTables[i].size(); j++)
 		{
 			outStream.write(reinterpret_cast<char*>(&boneRemapTables[i][j]), sizeof(int));
 		}
-		outStream.seekp(((static_cast<unsigned int>(outStream.tellp()) + 15) & ~15), SEEK_SET);
+
+		outStream.seekp(alignOffset(outStream.tellp(), 15), SEEK_SET);
 	}
 
-	unsigned int currentVertexDeclaration = 0;
+	//Writing vertex declaration header, decls and vertex buffers
 	for (size_t i = 0; i < newMeshGroups.size(); i++)
 	{
 		TRDE::MeshGroup& currentMeshGroup = newMeshGroups[i];
@@ -209,14 +197,12 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		currentMeshGroup.m_offsetVertexBuffer = static_cast<unsigned int>(outStream.tellp());
 
 		outStream.write(vertexBuffer, vertDeclHeader.m_vertexStride*currentMeshGroup.m_numVertices);
-		outStream.seekp(((static_cast<unsigned int>(outStream.tellp()) + 15) & ~15), SEEK_SET);
+		outStream.seekp(alignOffset(outStream.tellp(), 15), SEEK_SET);
 		outStream.seekp(16, SEEK_CUR);
 	}
 
-	unsigned int offsetIndexBuffer = 0;
-	unsigned int offsetFaceGroups = 0;
+	unsigned int offsetIndexBuffer = static_cast<unsigned int>(outStream.tellp());
 	std::vector<unsigned int> indexBufferOffsets;
-	offsetIndexBuffer = static_cast<unsigned int>(outStream.tellp());
 	
 	//Index buffers
 	unsigned int currentFaceGroup = 0;
@@ -241,10 +227,10 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		}
 	}
 
-	//Face groups
-	outStream.seekp(((static_cast<unsigned int>(outStream.tellp()) + 15) & ~15), SEEK_SET);
-	outStream.seekp(16, SEEK_CUR);//?
-	offsetFaceGroups = static_cast<unsigned int>(outStream.tellp());
+	//Writing Face groups
+	unsigned int offsetFaceGroups = alignOffset(outStream.tellp(), 15) + 16;
+	outStream.seekp(offsetFaceGroups, SEEK_SET);
+
 	currentFaceGroup = 0;
 	for (size_t i = 0; i < newMeshGroups.size(); i++)
 	{
@@ -269,8 +255,12 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		}
 	}
 
-	outStream.seekp(112, SEEK_SET);
-	outStream.seekp(4, SEEK_CUR);//TODO: merge seek
+	//Writing the mesh header
+	outStream.seekp(0, SEEK_SET);
+	model.m_meshHeader.m_fileVersion = 0x0E01;
+	outStream.write(reinterpret_cast<char*>(&model.m_meshHeader), 112);
+
+	outStream.seekp(116, SEEK_SET);
 	outStream.write(reinterpret_cast<char*>(&offsetFaceGroups), sizeof(unsigned int));
 	outStream.write(reinterpret_cast<char*>(&offsetMeshGroups), sizeof(unsigned int));
 	outStream.write(reinterpret_cast<char*>(&offsetBoneIndexList), sizeof(unsigned int));
@@ -286,23 +276,19 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 	outStream.seekp(4, SEEK_CUR);//Num lods
 
 	//Write updated mesh groups
-#if 0
 	outStream.seekp(offsetMeshGroups, SEEK_SET);
 	for (size_t i = 0; i < newMeshGroups.size(); i++)
 	{
 		TRDE::MeshGroup& currentMeshGroup = newMeshGroups[i];
-		unsigned int test = boneRemapTables.size() > 0 ? boneRemapTables[i].size() : 0;
+		unsigned int test = boneRemapTables.size() > 0 ? boneRemapTables[i].size() : 0;//TODO if skeletal mesh flag
 		outStream.write(reinterpret_cast<char*>(&currentMeshGroup.m_numFaceGroups), sizeof(unsigned int));
 		outStream.write(reinterpret_cast<char*>(&currentMeshGroup.m_lodIndex), sizeof(unsigned short));
 		outStream.write(reinterpret_cast<char*>(&test), sizeof(unsigned short));
-		if (boneMapOffsets.size() > 0)
-		{
-			outStream.write(reinterpret_cast<char*>(&boneMapOffsets[i]), sizeof(unsigned int));//Offset bone map uint
-		}
-		else
-		{
-			outStream.seekp(4, SEEK_CUR);//Padding
-		}
+		
+		outStream.write(reinterpret_cast<char*>(&offsetBoneRemapTables), sizeof(unsigned int));
+		offsetBoneRemapTables += test * sizeof(unsigned int);
+		offsetBoneRemapTables = (((offsetBoneRemapTables + 15) & ~15));
+
 		outStream.write(reinterpret_cast<char*>(&currentMeshGroup.m_offsetVertexBuffer), sizeof(unsigned int));
 		outStream.seekp(12, SEEK_CUR);//Padding
 		outStream.write(reinterpret_cast<char*>(&currentMeshGroup.m_offsetFVFInfo), sizeof(unsigned int));
@@ -310,7 +296,6 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		outStream.seekp(4, SEEK_CUR);//Padding
 		outStream.seekp(8, SEEK_CUR);
 	}
-#endif
 
 	for (size_t i = 0; i < newVertexBuffers.size(); i++)
 	{
@@ -320,7 +305,7 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 	TRDE::destroyModel(model);
 }
 
-void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup & currentMeshGroup, const TRDE::FaceGroup & faceGroup, const TRDE::VertexDeclarationHeader & vertDeclHeader, const char * vertexBuffer, unsigned short * indexBuffer, const VertexDeclarationList & vertDeclList, std::vector<std::vector<int>>& boneRemapTables, std::vector<TRDE::MeshGroup>& newMeshGroups, std::vector<TRDE::FaceGroup>& newFaceGroups, std::vector<unsigned short*>& newIndexBuffers, std::vector<char*>& newVertexBuffers, std::vector<TRDE::VertexDeclarationHeader>& newVertexDeclarationHeaders, std::vector<TRDE::VertexDeclaration>& vertDecls, std::vector<std::vector<TRDE::VertexDeclaration>>& newVertexDeclarations)
+void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup & currentMeshGroup, const TRDE::FaceGroup & faceGroup, const TRDE::VertexDeclarationHeader & vertDeclHeader, const char* vertexBuffer, unsigned short* indexBuffer, const VertexDeclarationList & vertDeclList, std::vector<std::vector<int>>& boneRemapTables, std::vector<TRDE::MeshGroup>& newMeshGroups, std::vector<TRDE::FaceGroup>& newFaceGroups, std::vector<unsigned short*>& newIndexBuffers, std::vector<char*>& newVertexBuffers, std::vector<TRDE::VertexDeclarationHeader>& newVertexDeclarationHeaders, std::vector<TRDE::VertexDeclaration>& vertDecls, std::vector<std::vector<TRDE::VertexDeclaration>>& newVertexDeclarations)
 {
 	char* tempVertexBuffer = new char[vertDeclHeader.m_vertexStride*currentMeshGroup.m_numVertices];
 	std::memcpy(tempVertexBuffer, vertexBuffer, vertDeclHeader.m_vertexStride*currentMeshGroup.m_numVertices);
@@ -350,7 +335,7 @@ void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup & currentMeshGroup,
 		//Here we prevent remapping the same vertex twice with a vertex visitation table.
 		if (!vertexVisitationTable[vertexIndex])
 		{
-			for (unsigned char j = 0; j < 4; j++)
+			for (unsigned char j = 0; j < NUM_BONE_INFLUENCES_PER_VERTEX; j++)
 			{
 				*(vertexSkinIndices + j) = addToBoneRemapTable(boneRemapTable, *(vertexSkinIndices + j));
 				assert(*(vertexSkinIndices + j) < boneRemapTable.size());
@@ -449,11 +434,11 @@ void Converter::GenerateGlobalBoneRemapTable(std::vector<int>& boneRemapTable, s
 #if _DEBUG
 		bool bFoundBoneMatch = false;
 #endif
-		TRDE::Bone& currentBone = trdeBones[i];
+		const TRDE::Bone& currentBone = trdeBones[i];
 
 		for (size_t j = 0; j < trasBones.size(); j++)
 		{
-			TRAS::Bone& compareBone = trasBones[j];
+			const TRAS::Bone& compareBone = trasBones[j];
 			
 			//Found exact bone positional match, keep it!
 			if (currentBone.m_pos[0] == compareBone.m_pos[0] && currentBone.m_pos[1] == compareBone.m_pos[1] && currentBone.m_pos[2] == compareBone.m_pos[2] &&!boneVisitationTable[j])
@@ -484,7 +469,6 @@ void Converter::GenerateGlobalBoneRemapTable(std::vector<int>& boneRemapTable, s
 			std::cout << "Warning: Did not find bone match, bone was remapped to closest! Dist:" << lowestDistance << " Should Move: " << !boneVisitationTable[closestBoneIndex] << " TRAS Closest Index: " << closestBoneIndex <<  " TRDE Index:" << i << std::endl;
 			std::cout << "X: " << trasBones[closestBoneIndex].m_pos[0] << "Y: " << trasBones[closestBoneIndex].m_pos[1] << "Z: " << trasBones[closestBoneIndex].m_pos[2] << std::endl;
 			std::cout << "X: " << trdeBones[i].m_pos[0] << "Y: " << trdeBones[i].m_pos[1] << "Z: " << trdeBones[i].m_pos[2] << std::endl;
-
 		}
 #endif
 		boneRemapTable.push_back(closestBoneIndex);
@@ -500,7 +484,7 @@ char* Converter::GenerateVertexBuffer(unsigned int numTris, unsigned short* inde
 	//HACK: Since we copy/duplicate all mesh group properties, we must hack the vertex count back to 0. This prevents incorrect initial vertex count whilst avoiding two vars and a copy back to resultVertexCount.
 	resultVertexCount = 0;
 
-	//If this has occurred, revert the commit that merged vertex visitation table and face index remap table for optimisation purposes.
+	//If this has occurred, revert the commit that merged vertex visitation table and index buffer remap table for optimisation purposes.
 	assert(maxVertexIndex < USHRT_MAX);
 
 	unsigned short* indexBufferRemapTable = new unsigned short[maxVertexIndex+1];
@@ -542,7 +526,7 @@ char* Converter::GenerateVertexBuffer(unsigned int numTris, unsigned short* inde
 }
 
 //Returns the length as float between one TRDE bone and a TRAS bone. Used to determine which TRAS bone is closest to a TRDE bone for weight transferring. 
-__inline float Converter::GetDistanceBetweenBones(TRDE::Bone& bone, TRAS::Bone& trasBone)
+__inline float Converter::GetDistanceBetweenBones(const TRDE::Bone& bone, const TRAS::Bone& trasBone)
 {
 	return std::sqrtf((trasBone.m_pos[0] - bone.m_pos[0]) * (trasBone.m_pos[0] - bone.m_pos[0])) + ((trasBone.m_pos[1] - bone.m_pos[1]) * (trasBone.m_pos[1] - bone.m_pos[1])) + ((trasBone.m_pos[2] - bone.m_pos[2]) * (trasBone.m_pos[2] - bone.m_pos[2]));
 }
@@ -595,4 +579,9 @@ void Converter::decodeNormal(char* normalPointer)
 int Converter::ExtractBit(unsigned char* bytes, int bitIndex)
 {
 	return (bytes[bitIndex >> 3] & (1 << (7 - bitIndex % 8))) != 0 ? 1 : 0;
+}
+
+unsigned int Converter::alignOffset(const unsigned int& offset, const unsigned char& alignment)
+{
+	return (offset + alignment) & ~alignment;
 }
