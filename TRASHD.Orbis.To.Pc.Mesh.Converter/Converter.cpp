@@ -27,6 +27,9 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 	//Setup our vertexDeclList, will allow us to easily convert specific vertex attribute data later on without the use of excessive loops.
 	VertexDeclarationList vertDeclList;
 
+	//Used for tracking current processing face group.
+	unsigned int currentFaceGroup = 0;
+
 	for (unsigned int i = 0; i < model.m_meshGroups.size(); i++)
 	{
 		TRDE::MeshGroup& currentMeshGroup = model.m_meshGroups[i];
@@ -90,9 +93,6 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 				break;
 			}
 		}
-
-		//Used for tracking current processing face group.
-		unsigned int currentFaceGroup = 0;
 
 		//Tomb Raider Definitive Edition (PS4) Mesh files have no bone remap table.
 		//Tomb Raider (PC) Mesh files do have bone remap tables. Each "mesh group" supports a maximum of 42 bones for skinning.
@@ -204,8 +204,8 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 	unsigned int offsetIndexBuffer = static_cast<unsigned int>(outStream.tellp());
 	std::vector<unsigned int> indexBufferOffsets;
 	
-	//Index buffers
-	unsigned int currentFaceGroup = 0;
+	//Write Index buffers
+	currentFaceGroup = 0;
 	for (size_t i = 0; i < newMeshGroups.size(); i++)
 	{
 		TRDE::MeshGroup& currentMeshGroup = newMeshGroups[i];
@@ -346,7 +346,6 @@ void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup & currentMeshGroup,
 			vertexVisitationTable[vertexIndex] = true;
 		}
 
-#if 1
 		if (boneRemapTable.size() + 2 >= MAX_BONES_PER_MESH_GROUP && !(i % 3))
 		{
 			std::cout << "Warning: face group is using too many bones! Expected <= " << MAX_BONES_PER_MESH_GROUP << " Got: " << boneRemapTable.size() << std::endl;
@@ -372,7 +371,6 @@ void Converter::GenerateBoneRemapTable(const TRDE::MeshGroup & currentMeshGroup,
 
 			lastSplit = i;
 		}
-#endif
 	}
 
 	boneRemapTables.push_back(boneRemapTable);
