@@ -5,18 +5,25 @@
 
 namespace TRAS
 {
+	enum kMeshType
+	{
+		TRESS_FX, //Line list
+		SKELETAL_MESH,
+		STATIC_MESH //No bones
+	};
+
 #pragma pack(push, 1)
 
 	struct VertexDeclaration
 	{
 		unsigned int m_componentNameHashed;
 		unsigned short m_position;
-		unsigned short m_unk00;
+		unsigned short m_unk00;//Maybe data type/shader channel, unconfirmed.
 	};
 
 	struct VertexDeclarationHeader
 	{
-		unsigned int m_unk00;//fvf info
+		unsigned int m_unk00;//Possibly legacy D3D9 FVF
 		unsigned int m_unk01;
 		unsigned short m_componentCount;
 		unsigned short m_vertexStride;
@@ -27,8 +34,8 @@ namespace TRAS
 	{
 		float m_unk00[4];
 
-		unsigned int m_offsetFaceStart;
-		unsigned int m_numFaces;
+		unsigned int m_indexBufferStartIndex;
+		unsigned int m_numTris;
 		unsigned int m_numVerts;
 		unsigned int m_unk01;//flags?
 
@@ -44,10 +51,10 @@ namespace TRAS
 
 	};
 
-	struct MeshGroup
+	struct VertexGroup
 	{
 		unsigned int m_numFaceGroups;
-		unsigned short m_modelIndex;
+		unsigned short m_lodIndex;
 		unsigned short m_numBoneMapIndices;
 		unsigned int m_offsetBoneMap;
 		unsigned int m_offsetVertexBuffer;
@@ -57,7 +64,7 @@ namespace TRAS
 
 		unsigned int m_numVertices;
 		unsigned int m_unk00;//Always 0
-		unsigned int m_sumOfAllPreviousFaceGroupTris;//Number of all tris, of all face groups read so far (all prior to the current one).
+		unsigned int m_sumOfAllPreviousFaceGroupTris;//Number of all tris * 3, of all face groups read so far (all prior to the current one).
 		unsigned int m_sumOfAllFaceGroupTris;//Number of tris of all face groups of this mesh group
 	};
 
@@ -77,19 +84,19 @@ namespace TRAS
 		float m_boundingBoxMin[4];
 		float m_boundingBoxMax[4];
 		float m_unk00[3];//Maybe scale? bounding sphere?
-		unsigned int m_primitiveDrawType;
+		enum kMeshType m_meshType;
 		int m_padding[8];//?
 
 		unsigned int m_unk01;//maybe flags?
 		unsigned int m_offsetFaceGroups;
-		unsigned int m_offsetMeshGroups;
+		unsigned int m_offsetVertexGroups;
 		unsigned int m_offsetBoneIndexList;
 
 		unsigned int m_offsetLodInfo;
 		unsigned int m_offsetFaceBuffer;
 
 		unsigned short m_numFaceGroups;
-		unsigned short m_numMeshGroups;
+		unsigned short m_numVertexGroups;
 		unsigned short m_numBones;
 		unsigned short m_numModels;//See deer.drm, each is treated as a "lod"
 	};
@@ -109,7 +116,7 @@ namespace TRAS
 	struct Model
 	{
 		TRAS::MeshHeader m_meshHeader;
-		std::vector<TRAS::MeshGroup> m_meshGroups;
+		std::vector<TRAS::VertexGroup> m_vertexGroups;
 		std::vector<TRAS::FaceGroup> m_faceGroups;
 	};
 

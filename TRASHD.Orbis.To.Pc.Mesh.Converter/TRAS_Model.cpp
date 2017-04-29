@@ -25,75 +25,32 @@ void TRAS::loadModel(TRAS::Model& model, std::ifstream& stream)
 	//We must declare this variable to track the current face group later on.
 	unsigned int currentFaceGroup = 0;
 
-	for (unsigned short i = 0; i < model.m_meshHeader.m_numMeshGroups; i++)
+	for (unsigned short i = 0; i < model.m_meshHeader.m_numVertexGroups; i++)
 	{
-		stream.seekg(meshBase + model.m_meshHeader.m_offsetMeshGroups + i * sizeof(TRAS::MeshGroup), SEEK_SET);
-		model.m_meshGroups.emplace_back();
-		const TRAS::MeshGroup& currentMeshGroup = model.m_meshGroups.back();
-		stream.read(reinterpret_cast<char*>(&model.m_meshGroups.back()), sizeof(TRAS::MeshGroup));
+		stream.seekg(meshBase + model.m_meshHeader.m_offsetVertexGroups + i * sizeof(TRAS::VertexGroup), SEEK_SET);
+		model.m_vertexGroups.emplace_back();
+		const TRAS::VertexGroup& currentVertexGroup = model.m_vertexGroups.back();
+		stream.read(reinterpret_cast<char*>(&model.m_vertexGroups.back()), sizeof(TRAS::VertexGroup));
 
 		//Reading the vertex buffer.
 		char* vertexBuffer;
-		if (currentMeshGroup.m_numVertices > 0)
+		if (currentVertexGroup.m_numVertices > 0)
 		{
-			stream.seekg(meshBase + currentMeshGroup.m_offsetFVFInfo, SEEK_SET);
+			stream.seekg(meshBase + currentVertexGroup.m_offsetFVFInfo, SEEK_SET);
 			TRAS::VertexDeclarationHeader vertDeclHeader;
 			stream.read(reinterpret_cast<char*>(&vertDeclHeader), sizeof(TRAS::VertexDeclarationHeader));
 
 			///Load vertex buffer into memory now
-			stream.seekg(meshBase + currentMeshGroup.m_offsetVertexBuffer, SEEK_SET);
-			vertexBuffer = new char[currentMeshGroup.m_numVertices * vertDeclHeader.m_vertexStride];
-			stream.read(vertexBuffer, currentMeshGroup.m_numVertices * vertDeclHeader.m_vertexStride);
+			stream.seekg(meshBase + currentVertexGroup.m_offsetVertexBuffer, SEEK_SET);
+			vertexBuffer = new char[currentVertexGroup.m_numVertices * vertDeclHeader.m_vertexStride];
+			stream.read(vertexBuffer, currentVertexGroup.m_numVertices * vertDeclHeader.m_vertexStride);
 
 			//Parse out the vertexComponents
-			stream.seekg(meshBase + currentMeshGroup.m_offsetFVFInfo + sizeof(TRAS::VertexDeclarationHeader), SEEK_SET);
-
-			//Bind vertex components
-			for (unsigned short j = 0; j < vertDeclHeader.m_componentCount; j++)
-			{
-				TRAS::VertexDeclaration vertDecl;
-				stream.read(reinterpret_cast<char*>(&vertDecl), sizeof(TRAS::VertexDeclaration));
-
-				switch (vertDecl.m_componentNameHashed)
-				{
-				case 0xD2F7D823://Position
-					break;
-				case 0x36F5E414://Normal
-					break;
-				case 0x3E7F6149://TessellationNormal
-					break;
-				case 0xF1ED11C3://Tangent
-					break;
-				case 0x64A86F01://Binormal
-					break;
-				case 0x9B1D4EA://PackedNTB
-					break;
-				case 0x48E691C0://SkinWeights
-					break;
-				case 0x5156D8D3://SkinIndices
-					break;
-				case 0x7E7DD623://Color1
-					break;
-				case 0x733EF0FA://Color2
-					break;
-				case 0x8317902A://Texcoord1
-					break;
-				case 0x8E54B6F3://Texcoord2
-					break;
-				case 0x8A95AB44://Texcoord3
-					break;
-				case 0x94D2FB41://Texcoord4
-					break;
-				case 0xE7623ECF://InstanceID
-					break;
-				default:
-					break;
-				}
-			}
+			stream.seekg(meshBase + currentVertexGroup.m_offsetFVFInfo + sizeof(TRAS::VertexDeclarationHeader), SEEK_SET);
 		}
 
 		//Load face groups
-		for (unsigned int j = 0; j < currentMeshGroup.m_numFaceGroups; j++, currentFaceGroup++)
+		for (unsigned int j = 0; j < currentVertexGroup.m_numFaceGroups; j++, currentFaceGroup++)
 		{
 			stream.seekg(meshBase + model.m_meshHeader.m_offsetFaceGroups + currentFaceGroup * sizeof(TRAS::FaceGroup), SEEK_SET);
 			model.m_faceGroups.emplace_back();
@@ -102,16 +59,16 @@ void TRAS::loadModel(TRAS::Model& model, std::ifstream& stream)
 			const TRAS::FaceGroup& faceGroup = model.m_faceGroups.back();
 
 			//Load index buffer and constuct model
-			stream.seekg(meshBase + model.m_meshHeader.m_offsetFaceBuffer + faceGroup.m_offsetFaceStart, SEEK_SET);
-			char* faceBuff = new char[faceGroup.m_numFaces*6];
-			stream.read(faceBuff, faceGroup.m_numFaces * 6);
+			stream.seekg(meshBase + model.m_meshHeader.m_offsetFaceBuffer + faceGroup.m_indexBufferStartIndex, SEEK_SET);
+			char* faceBuff = new char[(faceGroup.m_numTris * 3) * sizeof(unsigned short)];
+			stream.read(faceBuff, (faceGroup.m_numTris * 3) * sizeof(unsigned short));
 
 			//Destroy index buffer
 			delete[] faceBuff;
 		}
 
 		//Delete vertex buffer.
-		if (currentMeshGroup.m_numVertices > 0)
+		if (currentVertexGroup.m_numVertices > 0)
 		{
 			delete[] vertexBuffer;
 		}
