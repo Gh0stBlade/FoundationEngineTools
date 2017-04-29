@@ -22,31 +22,31 @@ void TRDE::loadModel(TRDE::Model& model, std::ifstream& stream)
 
 	//We must declare this variable to track the current face group being processed later on.
 	unsigned int currentFaceGroup = 0;
-
-	for (unsigned short i = 0; i < model.m_meshHeader.m_numMeshGroups; i++)
+	
+	for (unsigned short i = 0; i < model.m_meshHeader.m_numVertexGroups; i++)
 	{
-		stream.seekg(model.m_meshHeader.m_offsetMeshGroups + i * sizeof(TRDE::MeshGroup), SEEK_SET);
+		stream.seekg(model.m_meshHeader.m_offsetVertexGroups + i * sizeof(TRDE::VertexGroup), SEEK_SET);
 
-		model.m_meshGroups.emplace_back();
-		TRDE::MeshGroup& currentMeshGroup = model.m_meshGroups.back();
-		stream.read(reinterpret_cast<char*>(&currentMeshGroup), sizeof(TRDE::MeshGroup));
-
-		if (currentMeshGroup.m_numVertices == 0)
+		model.m_vertexGroups.emplace_back();
+		TRDE::VertexGroup& currentVertexGroup = model.m_vertexGroups.back();
+		stream.read(reinterpret_cast<char*>(&currentVertexGroup), sizeof(TRDE::VertexGroup));
+		
+		if (currentVertexGroup.m_numVertices == 0)
 			continue;
 
-		stream.seekg(currentMeshGroup.m_offsetFVFInfo, SEEK_SET);
+		stream.seekg(currentVertexGroup.m_offsetFVFInfo, SEEK_SET);
 		model.m_vertexDeclarationHeaders.emplace_back();
 
 		TRDE::VertexDeclarationHeader& vertDeclHeader = model.m_vertexDeclarationHeaders.back();
 		stream.read(reinterpret_cast<char*>(&vertDeclHeader), sizeof(TRDE::VertexDeclarationHeader));
 
-		stream.seekg(currentMeshGroup.m_offsetVertexBuffer, SEEK_SET);
-		char* vertexBuffer = new char[currentMeshGroup.m_numVertices * vertDeclHeader.m_vertexStride];
+		stream.seekg(currentVertexGroup.m_offsetVertexBuffer, SEEK_SET);
+		char* vertexBuffer = new char[currentVertexGroup.m_numVertices * vertDeclHeader.m_vertexStride];
 		model.m_vertexBuffers.emplace_back(vertexBuffer);
 
-		stream.read(vertexBuffer, (currentMeshGroup.m_numVertices * vertDeclHeader.m_vertexStride));
+		stream.read(vertexBuffer, (currentVertexGroup.m_numVertices * vertDeclHeader.m_vertexStride));
 
-		stream.seekg(currentMeshGroup.m_offsetFVFInfo + sizeof(TRDE::VertexDeclarationHeader), SEEK_SET);
+		stream.seekg(currentVertexGroup.m_offsetFVFInfo + sizeof(TRDE::VertexDeclarationHeader), SEEK_SET);
 
 		std::vector<TRDE::VertexDeclaration> vertDecls;
 
@@ -58,12 +58,13 @@ void TRDE::loadModel(TRDE::Model& model, std::ifstream& stream)
 
 		}
 
-		if(model.m_meshHeader.m_primitiveDrawType > 0)
-			vertDecls = ReorderVertDecls(vertDecls, currentMeshGroup, vertexBuffer, vertDeclHeader);
+		//Reorder to maintain FVF
+		if(model.m_meshHeader.m_meshType != kMeshType::TRESS_FX)
+			vertDecls = ReorderVertDecls(vertDecls, currentVertexGroup, vertexBuffer, vertDeclHeader);
 
 		model.m_vertexDeclarations.push_back(vertDecls);
 
-		for (unsigned int j = 0; j < currentMeshGroup.m_numFaceGroups; j++, currentFaceGroup++)
+		for (unsigned int j = 0; j < currentVertexGroup.m_numFaceGroups; j++, currentFaceGroup++)
 		{
 			stream.seekg(model.m_meshHeader.m_offsetFaceGroups + currentFaceGroup * sizeof(TRDE::FaceGroup), SEEK_SET);
 
@@ -71,26 +72,26 @@ void TRDE::loadModel(TRDE::Model& model, std::ifstream& stream)
 			TRDE::FaceGroup& faceGroup = model.m_faceGroups.back();
 			stream.read(reinterpret_cast<char*>(&faceGroup), sizeof(TRDE::FaceGroup));
 
-			if (faceGroup.m_numFaces == 0)
+			if (faceGroup.m_numTris == 0)
 				continue;
 
-			stream.seekg(model.m_meshHeader.m_offsetFaceBuffer + (faceGroup.m_offsetFaceStart * sizeof(unsigned short)), SEEK_SET);
+			stream.seekg(model.m_meshHeader.m_offsetFaceBuffer + (faceGroup.m_indexBufferStartIndex * sizeof(unsigned short)), SEEK_SET);
 			char* faceBuff = nullptr;
 
-			switch (model.m_meshHeader.m_primitiveDrawType)
+			switch (model.m_meshHeader.m_meshType)
 			{
-			case TRDE::kPrimitiveDrawType::TRIANGLE_LIST:
-			case 2:
+			case TRDE::kMeshType::SKELETAL_MESH:
+			case TRDE::kMeshType::STATIC_MESH:
 			{
-				faceBuff = new char[(faceGroup.m_numFaces * 3) * sizeof(unsigned short)];
-				stream.read(faceBuff, (faceGroup.m_numFaces * 3) * sizeof(unsigned short));
+				faceBuff = new char[(faceGroup.m_numTris * 3) * sizeof(unsigned short)];
+				stream.read(faceBuff, (faceGroup.m_numTris * 3) * sizeof(unsigned short));
 				model.m_indexBuffers.emplace_back(faceBuff);
 				break;
 			}
-			case TRDE::kPrimitiveDrawType::LINE_LIST:
+			case TRDE::kMeshType::TRESS_FX:
 			{
-				faceBuff = new char[(faceGroup.m_numFaces * 2) * sizeof(unsigned short)];
-				stream.read(faceBuff, (faceGroup.m_numFaces * 2) * sizeof(unsigned short));
+				faceBuff = new char[(faceGroup.m_numTris * 2) * sizeof(unsigned short)];
+				stream.read(faceBuff, (faceGroup.m_numTris * 2) * sizeof(unsigned short));
 				model.m_indexBuffers.emplace_back(faceBuff);
 				break;
 			}
@@ -165,7 +166,7 @@ void TRDE::loadSkeleton(TRDE::Skeleton& skeleton)
 	inputStream3.close();
 }
 
-std::vector<TRDE::VertexDeclaration> TRDE::ReorderVertDecls(std::vector<TRDE::VertexDeclaration>& vertDecl, TRDE::MeshGroup & currentMeshGroup, char* vertexBuffer, TRDE::VertexDeclarationHeader& vertDeclHeader)
+std::vector<TRDE::VertexDeclaration> TRDE::ReorderVertDecls(std::vector<TRDE::VertexDeclaration>& vertDecl, TRDE::VertexGroup& currentVertexGroup, char* vertexBuffer, TRDE::VertexDeclarationHeader& vertDeclHeader)
 {
 	std::vector<TRDE::VertexDeclaration> reorderedVertexDecls;
 	std::vector<unsigned char> componentOffsetList;
@@ -307,10 +308,10 @@ std::vector<TRDE::VertexDeclaration> TRDE::ReorderVertDecls(std::vector<TRDE::Ve
 	}
 
 	unsigned int currentOffsetNew = 0;
-	char* tempVertexBuffer = new char[currentMeshGroup.m_numVertices * vertexStride];
+	char* tempVertexBuffer = new char[currentVertexGroup.m_numVertices * vertexStride];
 	
 
-	for (unsigned int j = 0; j < currentMeshGroup.m_numVertices; j++)
+	for (unsigned int j = 0; j < currentVertexGroup.m_numVertices; j++)
 	{
 		currentOffsetNew = 0;
 
@@ -322,7 +323,7 @@ std::vector<TRDE::VertexDeclaration> TRDE::ReorderVertDecls(std::vector<TRDE::Ve
 		}
 	}
 
-	std::memcpy(vertexBuffer, tempVertexBuffer, currentMeshGroup.m_numVertices * vertexStride);
+	std::memcpy(vertexBuffer, tempVertexBuffer, currentVertexGroup.m_numVertices * vertexStride);
 
 
 	
