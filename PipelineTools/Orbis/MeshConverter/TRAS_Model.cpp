@@ -41,9 +41,7 @@ void TRAS::loadModel(TRAS::Model& model, std::ifstream& stream)
 			stream.read(reinterpret_cast<char*>(&vertDeclHeader), sizeof(TRAS::VertexDeclarationHeader));
 
 			///Load vertex buffer into memory now
-			stream.seekg(meshBase + currentVertexGroup.m_offsetVertexBuffer, SEEK_SET);
-			vertexBuffer = new char[currentVertexGroup.m_numVertices * vertDeclHeader.m_vertexStride];
-			stream.read(vertexBuffer, currentVertexGroup.m_numVertices * vertDeclHeader.m_vertexStride);
+			stream.seekg(meshBase + currentVertexGroup.m_offsetVertexBuffer + currentVertexGroup.m_numVertices * vertDeclHeader.m_vertexStride, SEEK_SET);
 
 			//Parse out the vertexComponents
 			stream.seekg(meshBase + currentVertexGroup.m_offsetFVFInfo + sizeof(TRAS::VertexDeclarationHeader), SEEK_SET);
@@ -59,18 +57,7 @@ void TRAS::loadModel(TRAS::Model& model, std::ifstream& stream)
 			const TRAS::FaceGroup& faceGroup = model.m_faceGroups.back();
 
 			//Load index buffer and constuct model
-			stream.seekg(meshBase + model.m_meshHeader.m_offsetFaceBuffer + faceGroup.m_indexBufferStartIndex, SEEK_SET);
-			char* faceBuff = new char[(faceGroup.m_numTris * 3) * sizeof(unsigned short)];
-			stream.read(faceBuff, (faceGroup.m_numTris * 3) * sizeof(unsigned short));
-
-			//Destroy index buffer
-			delete[] faceBuff;
-		}
-
-		//Delete vertex buffer.
-		if (currentVertexGroup.m_numVertices > 0)
-		{
-			delete[] vertexBuffer;
+			stream.seekg(meshBase + model.m_meshHeader.m_offsetFaceBuffer + faceGroup.m_indexBufferStartIndex + (faceGroup.m_numTris * 3) * sizeof(unsigned short), SEEK_SET);
 		}
 	}
 }
@@ -118,16 +105,25 @@ void TRAS::loadSkeleton(TRAS::Skeleton & skeleton)
 		inputStream2.read(reinterpret_cast<char*>(&bone.m_pos[1]), sizeof(float));
 		inputStream2.read(reinterpret_cast<char*>(&bone.m_pos[2]), sizeof(float));
 		inputStream2.seekg(12, SEEK_CUR);
-		int parent;
-		inputStream2.read(reinterpret_cast<char*>(&parent), sizeof(int));
-		if (skeleton.m_bones.size() > parent)
-		{
-			bone.m_pos[0] += skeleton.m_bones[parent].m_pos[0];
-			bone.m_pos[1] += skeleton.m_bones[parent].m_pos[1];
-			bone.m_pos[2] += skeleton.m_bones[parent].m_pos[2];
-		}
+		inputStream2.read(reinterpret_cast<char*>(&bone.m_parentIndex), sizeof(int));
 		inputStream2.seekg(4, SEEK_CUR);
 		skeleton.m_bones.push_back(bone);
+	}
+
+	for (unsigned int i = 1; i < numBones; i++)
+	{
+		Bone* currentBone = &skeleton.m_bones[i];
+		if (currentBone->m_parentIndex > -1 && currentBone->m_parentIndex < skeleton.m_bones.size())
+		{
+			currentBone->m_parentBone = &skeleton.m_bones[currentBone->m_parentIndex];
+			currentBone->m_pos[0] += currentBone->m_parentBone->m_pos[0];
+			currentBone->m_pos[1] += currentBone->m_parentBone->m_pos[1];
+			currentBone->m_pos[2] += currentBone->m_parentBone->m_pos[2];
+		}
+		else
+		{
+			assert(false);
+		}
 	}
 
 	inputStream2.close();

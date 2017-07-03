@@ -124,7 +124,15 @@ namespace TRDE
 
 	struct Bone
 	{
+		Bone()
+		{
+			m_parentBone = nullptr;
+			m_parentIndex = -1;
+		}
+
 		float m_pos[3];
+		Bone* m_parentBone;
+		int m_parentIndex;
 	};
 
 	struct Skeleton
