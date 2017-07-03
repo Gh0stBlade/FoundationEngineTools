@@ -98,12 +98,25 @@ namespace TRAS
 		unsigned short m_numFaceGroups;
 		unsigned short m_numVertexGroups;
 		unsigned short m_numBones;
-		unsigned short m_numModels;//See deer.drm, each is treated as a "lod"
+		unsigned short m_numLods;//See deer.drm
 	};
 
 	struct Bone
 	{
+		Bone()
+		{
+			m_parentBone = nullptr;
+			m_parentIndex = -1;
+		}
+
+		bool operator==(const Bone& b) const
+		{
+			return (b.m_pos[0] == m_pos[0] && b.m_pos[1] == m_pos[1] && b.m_pos[2] == m_pos[2]);
+		}
+
 		float m_pos[3];
+		Bone* m_parentBone;
+		int m_parentIndex;
 	};
 
 	struct Skeleton

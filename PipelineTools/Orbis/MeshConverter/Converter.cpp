@@ -2,15 +2,17 @@
 #include "TRDE_Model.h"
 #include "TRAS_Model.h"
 
+#include "VectorMath.h"
+
 #include <cassert>
 #include <iostream>
-#include <climits>
+
+#define USHRT_MAX 0xFFFF
+#define SCHAR_MAX 127
 
 const unsigned int MAX_BONES_PER_MESH_GROUP = 42;
 const unsigned char NUM_BONE_INFLUENCES_PER_VERTEX = 4;
-//TODO bi normal/tangent calculations
 
-//TODO: Pull relocation data into TRDE result file, move bones accordingly
 void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 {
 	TRDE::Model model;
@@ -25,7 +27,7 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 	std::vector<std::vector<TRDE::VertexDeclaration>> newVertexDeclarations;
 
 	//Setup our vertexDeclList, will allow us to easily convert specific vertex attribute data later on without the use of excessive loops.
-	VertexDeclarationList vertDeclList;
+	
 
 	//Used for tracking current processing face group.
 	unsigned int currentFaceGroup = 0;
@@ -37,6 +39,8 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 		//Get the skin indices vertex decl info
 		TRDE::VertexDeclarationHeader& vertDeclHeader = model.m_vertexDeclarationHeaders[i];
 		std::vector<TRDE::VertexDeclaration>& vertDecls = model.m_vertexDeclarations[i];
+
+		VertexDeclarationList vertDeclList;
 
 		for (unsigned int j = 0; j < vertDeclHeader.m_componentCount; j++)
 		{
@@ -166,7 +170,6 @@ void Converter::Convert(std::ifstream& inStream, std::ofstream& outStream)
 	//Writing the bone remap tables.
 	for (size_t i = 0; i < boneRemapTables.size(); i++)
 	{
-		//newMeshGroups[i].m_
 		for (size_t j = 0; j < boneRemapTables[i].size(); j++)
 		{
 			outStream.write(reinterpret_cast<char*>(&boneRemapTables[i][j]), sizeof(int));
@@ -327,24 +330,36 @@ void Converter::GenerateBoneRemapTable(const TRDE::VertexGroup& currentVertexGro
 			maxVertexIndex = vertexIndex;
 		}
 
-		unsigned char* vertexSkinIndices = (unsigned char*)tempVertexBuffer + (vertDeclHeader.m_vertexStride*(indexBuffer[i])) + vertDeclList.m_vertDecls[kVertexAttributeTypes::SKIN_INDICES]->m_position;
-		char* vertexNormals = tempVertexBuffer + (vertDeclHeader.m_vertexStride*(indexBuffer[i])) + vertDeclList.m_vertDecls[kVertexAttributeTypes::NORMAL]->m_position;
-
+		//Convert PS4 vertex attributes to PC compatible.
 		//Sometimes index buffers may use the same vertex more than once.
 		//Here we prevent remapping the same vertex twice with a vertex visitation table.
 		if (!vertexVisitationTable[vertexIndex])
 		{
-			for (unsigned char j = 0; j < NUM_BONE_INFLUENCES_PER_VERTEX; j++)
+			if (vertDeclList.m_vertDecls[kVertexAttributeTypes::SKIN_INDICES] != nullptr)
 			{
-				*(vertexSkinIndices + j) = addToBoneRemapTable(boneRemapTable, *(vertexSkinIndices + j));
-				assert(*(vertexSkinIndices + j) < boneRemapTable.size());
+				unsigned char* vertexSkinIndices = (unsigned char*) tempVertexBuffer + (vertDeclHeader.m_vertexStride*(indexBuffer[i])) + vertDeclList.m_vertDecls[kVertexAttributeTypes::SKIN_INDICES]->m_position;
+				for (unsigned char j = 0; j < NUM_BONE_INFLUENCES_PER_VERTEX; j++)
+				{
+					*(vertexSkinIndices + j) = addToBoneRemapTable(boneRemapTable, *(vertexSkinIndices + j));
+					assert(*(vertexSkinIndices + j) < boneRemapTable.size());
+				}
 			}
 
-			decodeNormal(vertexNormals);
+			if (vertDeclList.m_vertDecls[kVertexAttributeTypes::NORMAL] != nullptr)
+			{
+				char* vertexNormals = tempVertexBuffer + (vertDeclHeader.m_vertexStride*(indexBuffer[i])) + vertDeclList.m_vertDecls[kVertexAttributeTypes::NORMAL]->m_position;
+				decodeNormal(vertexNormals);
+			}
+
+			if (vertDeclList.m_vertDecls[kVertexAttributeTypes::TESSELLATION_NORMAL] != nullptr)
+			{
+				char* vertexTesselationNormals = tempVertexBuffer + (vertDeclHeader.m_vertexStride*(indexBuffer[i])) + vertDeclList.m_vertDecls[kVertexAttributeTypes::TESSELLATION_NORMAL]->m_position;
+				std::memset(vertexTesselationNormals, 0, 16);
+			}
 
 			vertexVisitationTable[vertexIndex] = true;
 		}
-
+		
 		if (boneRemapTable.size() + 2 >= MAX_BONES_PER_MESH_GROUP && !(i % 3))
 		{
 			std::cout << "Warning: face group is using too many bones! Expected <= " << MAX_BONES_PER_MESH_GROUP << " Got: " << boneRemapTable.size() << std::endl;
@@ -358,8 +373,13 @@ void Converter::GenerateBoneRemapTable(const TRDE::VertexGroup& currentVertexGro
 			TRDE::FaceGroup newFaceGroup = faceGroup;
 			newFaceGroup.m_numTris = ((i - lastSplit) / 3);
 
-			newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numTris, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newVertexGroup.m_numVertices, maxVertexIndex));
+			std::vector<Vector3> tangents;
+			std::vector<Vector3> bitangents;
 
+			newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numTris, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newVertexGroup.m_numVertices, maxVertexIndex, tangents, bitangents, vertDeclList));
+			UpdateTangents(newVertexBuffers.back(), tangents.size(), vertDeclHeader.m_vertexStride, tangents, bitangents, vertDeclList);
+			tangents.clear();
+			bitangents.clear();
 			newVertexGroups.push_back(newVertexGroup);
 			newFaceGroups.push_back(newFaceGroup);
 			newIndexBuffers.push_back(indexBuffer + lastSplit);
@@ -390,7 +410,13 @@ void Converter::GenerateBoneRemapTable(const TRDE::VertexGroup& currentVertexGro
 		newIndexBuffers.push_back(indexBuffer + lastSplit);
 	}
 
-	newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numTris, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newVertexGroup.m_numVertices, maxVertexIndex));
+	std::vector<Vector3> tangents;
+	std::vector<Vector3> bitangents;
+	newVertexBuffers.push_back(GenerateVertexBuffer(newFaceGroup.m_numTris, indexBuffer + lastSplit, tempVertexBuffer, vertDeclHeader.m_vertexStride, newVertexGroup.m_numVertices, maxVertexIndex, tangents, bitangents, vertDeclList));
+	UpdateTangents(newVertexBuffers.back(), tangents.size(), vertDeclHeader.m_vertexStride, tangents, bitangents, vertDeclList);
+	tangents.clear();
+	bitangents.clear();
+
 	newVertexDeclarationHeaders.push_back(vertDeclHeader);
 	newVertexDeclarations.push_back(vertDecls);
 	newVertexGroups.push_back(newVertexGroup);
@@ -428,25 +454,27 @@ void Converter::GenerateGlobalBoneRemapTable(std::vector<int>& boneRemapTable, s
 		float lowestDistance = 0.0f;
 		int closestBoneIndex = 0;
 
-#if _DEBUG
-		bool bFoundBoneMatch = false;
-#endif
 		const TRDE::Bone& currentBone = trdeBones[i];
 
+		if (i < trasBones.size())
+		{
+			if (currentBone.m_pos[0] == trasBones[i].m_pos[0] && currentBone.m_pos[1] == trasBones[i].m_pos[1] && currentBone.m_pos[2] == trasBones[i].m_pos[2])
+			{
+				closestBoneIndex = i;
+				boneRemapTable.push_back(closestBoneIndex);
+				continue;
+			}
+		}
+		
 		for (size_t j = 0; j < trasBones.size(); j++)
 		{
 			const TRAS::Bone& compareBone = trasBones[j];
-			
+
 			//Found exact bone positional match, keep it!
-			if (currentBone.m_pos[0] == compareBone.m_pos[0] && currentBone.m_pos[1] == compareBone.m_pos[1] && currentBone.m_pos[2] == compareBone.m_pos[2] &&!boneVisitationTable[j])
+			if (currentBone.m_pos[0] == compareBone.m_pos[0] && currentBone.m_pos[1] == compareBone.m_pos[1] && currentBone.m_pos[2] == compareBone.m_pos[2] && currentBone.m_parentIndex == compareBone.m_parentIndex)// && !boneVisitationTable[j])
 			{
 				closestBoneIndex = j;
-
-#if _DEBUG
-				bFoundBoneMatch = true;
 				boneVisitationTable[closestBoneIndex] = true;
-#endif
-				
 				break;
 			}
 
@@ -459,24 +487,15 @@ void Converter::GenerateGlobalBoneRemapTable(std::vector<int>& boneRemapTable, s
 			}
 		}
 
-#if _DEBUG
-		if(!bFoundBoneMatch)
-		{
-			//If trUE SAFE TO MOVE BONE TO DEFINITIVE EDITION POS
-			std::cout << "Warning: Did not find bone match, bone was remapped to closest! Dist:" << lowestDistance << " Should Move: " << !boneVisitationTable[closestBoneIndex] << " TRAS Closest Index: " << closestBoneIndex <<  " TRDE Index:" << i << std::endl;
-			std::cout << "X: " << trasBones[closestBoneIndex].m_pos[0] << "Y: " << trasBones[closestBoneIndex].m_pos[1] << "Z: " << trasBones[closestBoneIndex].m_pos[2] << std::endl;
-			std::cout << "X: " << trdeBones[i].m_pos[0] << "Y: " << trdeBones[i].m_pos[1] << "Z: " << trdeBones[i].m_pos[2] << std::endl;
-		}
-#endif
 		boneRemapTable.push_back(closestBoneIndex);
 	}
 
-	delete[] boneVisitationTable;
+	delete [] boneVisitationTable;
 }
 
 
 //When we split meshes, we must re-index both the index and vertex buffer, so they're relative to 0.
-char* Converter::GenerateVertexBuffer(unsigned int numTris, unsigned short* indexBuffer, char* vertexBuffer, unsigned int vertexStride, unsigned long long& resultVertexCount, unsigned short maxVertexIndex)
+char* Converter::GenerateVertexBuffer(unsigned int numTris, unsigned short* indexBuffer, char* vertexBuffer, unsigned int vertexStride, unsigned long long& resultVertexCount, unsigned short maxVertexIndex, std::vector<Vector3>& tangents, std::vector<Vector3>& bitangents, const VertexDeclarationList& vertDeclList)
 {
 	//HACK: Since we copy/duplicate all mesh group properties, we must hack the vertex count back to 0. This prevents incorrect initial vertex count whilst avoiding two vars and a copy back to resultVertexCount.
 	resultVertexCount = 0;
@@ -519,7 +538,133 @@ char* Converter::GenerateVertexBuffer(unsigned int numTris, unsigned short* inde
 	}
 #endif
 
+	RecalculateTangents(resultVertexCount, vertexStride, numTris, remappedVertexBuffer, indexBuffer, tangents, bitangents, vertDeclList);
+
+
 	return remappedVertexBuffer;
+}
+
+void Converter::RecalculateTangents(const unsigned long& vertexCount, unsigned int vertexStride, const unsigned int numTriangles, char* vertexBuffer, unsigned short* indexBuffer, std::vector<Vector3>& tangents, std::vector<Vector3>& bitangents, const VertexDeclarationList& vertDeclList)
+{
+	if (vertexBuffer != nullptr && indexBuffer != nullptr)
+	{
+		std::vector<Vector3> tan1;
+		std::vector<Vector3> tan2;
+		std::vector<float> tan_w;
+		for (unsigned int i = 0; i < vertexCount; i++)
+		{
+			tan1.push_back(Vector3(0.0f, 0.0f, 0.0f));
+			tan2.push_back(Vector3(0.0f, 0.0f, 0.0f));
+			tangents.push_back(Vector3(0.0f, 0.0f, 0.0f));
+			bitangents.push_back(Vector3(0.0f, 0.0f, 0.0f));
+			tan_w.push_back(0.0f);
+		}
+
+		for(int i = 0; i < numTriangles; i++)
+		{
+			unsigned short i1 = indexBuffer[i];
+			unsigned short i2 = indexBuffer[i+1];
+			unsigned short i3 = indexBuffer[i+2];
+
+			float* fv1 = (float*)(vertexBuffer + (vertexStride*i1) + vertDeclList.m_vertDecls[kVertexAttributeTypes::POSITION]->m_position);
+			float* fv2 = (float*)(vertexBuffer + (vertexStride*i2) + vertDeclList.m_vertDecls[kVertexAttributeTypes::POSITION]->m_position);
+			float* fv3 = (float*)(vertexBuffer + (vertexStride*i3) + vertDeclList.m_vertDecls[kVertexAttributeTypes::POSITION]->m_position);
+
+			Vector3 v1(*fv1, *(fv1 + 1), *(fv1 + 2));
+			Vector3 v2(*fv2, *(fv2 + 1), *(fv2 + 2));
+			Vector3 v3(*fv3, *(fv3 + 1), *(fv3 + 2));
+
+			short* sw1 = (short*) (vertexBuffer + (vertexStride*i1) + vertDeclList.m_vertDecls[kVertexAttributeTypes::TEXCOORD1]->m_position);
+			short* sw2 = (short*) (vertexBuffer + (vertexStride*i2) + vertDeclList.m_vertDecls[kVertexAttributeTypes::TEXCOORD1]->m_position);
+			short* sw3 = (short*) (vertexBuffer + (vertexStride*i3) + vertDeclList.m_vertDecls[kVertexAttributeTypes::TEXCOORD1]->m_position);
+
+			Vector3 w1((*sw1) / 2048.0f, (*sw1 + 1) / 2048.0f, 0.0f);
+			Vector3 w2((*sw2) / 2048.0f, (*sw2 + 1) / 2048.0f, 0.0f);
+			Vector3 w3((*sw3) / 2048.0f, (*sw3 + 1) / 2048.0f, 0.0f);
+
+			float x1 = v2.x - v1.x;
+			float x2 = v3.x - v1.x;
+			float y1 = v2.y - v1.y;
+			float y2 = v3.y - v1.y;
+			float z1 = v2.z - v1.z;
+			float z2 = v3.z - v1.z;
+
+			float s1 = w2.x - w1.x;
+			float s2 = w3.x - w1.x;
+			float t1 = w2.y - w1.y;
+			float t2 = w3.y - w1.y;
+
+			float divr = (s1 * t2 - s2 * t1);
+			if (divr == 0.0f)
+			{
+				divr = 0.001f;
+			}
+				
+			float r = 1.0f / divr;
+
+			Vector3 sdir = Vector3((t2 * x1 - t1 * x2) * r, (t2 * y1 - t1 * y2) * r, (t2 * z1 - t1 * z2) * r);
+			Vector3 tdir = Vector3((s1 * x2 - s2 * x1) * r, (s1 * y2 - s2 * y1) * r, (s1 * z2 - s2 * z1) * r);
+
+			tan1[i1] = tan1[i1] + sdir;
+			tan1[i2] = tan1[i2] + sdir;
+			tan1[i3] = tan1[i3] + sdir;
+
+			tan2[i1] = tan2[i1] + tdir;
+			tan2[i2] = tan2[i2] + tdir;
+			tan2[i3] = tan2[i3] + tdir;
+		}
+
+		for (int i = 0; i < vertexCount; i++)
+		{
+			unsigned char* normalPointer = reinterpret_cast<unsigned char*>(&vertexBuffer[(vertexStride * i) + vertDeclList.m_vertDecls[kVertexAttributeTypes::NORMAL]->m_position]);
+#if 1
+			Vector3 n = Vector3((static_cast<float>(normalPointer[0]) / 255.0f * 2 - 1), (static_cast<float>(normalPointer[1]) / 255.0f * 2 - 1), (static_cast<float>(normalPointer[2]) / 255.0f * 2 - 1));
+			n.normalize();
+#else
+			Vector3 n = Vector3((static_cast<float>(normalPointer[0]) - 127.0f / 127.0f), (static_cast<float>(normalPointer[1]) - 127.0f / 127.0f), (static_cast<float>(normalPointer[2]) - 127.0f / 127.0f));
+			n.normalize();
+#endif
+			Vector3 t = tan1[i];
+
+			tangents[i] = (t - n * n.dot(t));
+			tangents[i].normalize();
+
+			tan_w[i] = (n.cross(t).dot(tan2[i]) < 0.0f) ? -1.0f : 1.0f;
+
+			bitangents[i] = n.cross(tangents[i]) * tan_w[i];
+		}
+	}
+	else
+	{
+		std::cout << "Illegal vertex or index buffer!" << std::endl;
+	}
+}
+
+void Converter::UpdateTangents(char* vertexBuffer, unsigned int numVertices, unsigned int vertexStride, std::vector<Vector3>& tangents, std::vector<Vector3>& bitangents, const VertexDeclarationList& vertDeclList)
+{
+
+	for (int i = 0; i < numVertices; i++)
+	{
+		if (vertDeclList.m_vertDecls[kVertexAttributeTypes::TANGENT] != nullptr)
+		{
+			char* tangentPointer = vertexBuffer + (vertexStride*i) + vertDeclList.m_vertDecls[kVertexAttributeTypes::TANGENT]->m_position;
+
+			*tangentPointer = static_cast<char>((((tangents[i].x) * 127.0f) + 127.0f));
+			*(tangentPointer + 1) = static_cast<char>((((tangents[i].y) * 127.0f) + 127.0f));
+			*(tangentPointer + 2) = static_cast<char>((((tangents[i].z) * 127.0f) + 127.0f));
+			*(tangentPointer + 3) = 0;
+		}
+
+		if (vertDeclList.m_vertDecls[kVertexAttributeTypes::BI_NORMAL] != nullptr)
+		{
+			char* biNormalPointer = vertexBuffer + (vertexStride*i) + vertDeclList.m_vertDecls[kVertexAttributeTypes::BI_NORMAL]->m_position;
+
+			*biNormalPointer = static_cast<char>((((bitangents[i].x) * 127.0f) + 127.0f));
+			*(biNormalPointer + 1) = static_cast<char>((((bitangents[i].y) * 127.0f) + 127.0f));
+			*(biNormalPointer + 2) = static_cast<char>((((bitangents[i].z) * 127.0f) + 127.0f));
+			*(biNormalPointer + 3) = 0;
+		}
+	}
 }
 
 //Returns the length as float between one TRDE bone and a TRAS bone. Used to determine which TRAS bone is closest to a TRDE bone for weight transferring. 
@@ -541,12 +686,13 @@ void Converter::decodeNormal(char* normalPointer)
 
 	int extractedNormal[3];
 	float convertedNormal[3];
+
 	for (unsigned char i = 0; i < 3; i++)
 	{
 		extractedNormal[i] = 0;
 		for (int j = 0; j < 10; j++)
 		{
-			extractedNormal[i] |= ExtractBit(reversedNormal, (9 - j) + ((i*10)+2)) << j;
+			extractedNormal[i] |= ExtractBit(reversedNormal, (9 - j) + ((i * 10) + 2)) << j;
 		}
 
 		if (extractedNormal[i] >= 512)
@@ -554,22 +700,17 @@ void Converter::decodeNormal(char* normalPointer)
 			extractedNormal[i] -= 1024;
 		}
 
-#if ENDIAN_BIG
-		convertedNormal[i] = (static_cast<float>(extractedNormal[i]) / 511.0f);
-#else
-		convertedNormal[2-i] = (static_cast<float>(extractedNormal[i]) / 511.0f);
-#endif
+		convertedNormal[2 - i] = (static_cast<float>(extractedNormal[i]) / 511.0f);
 	}
 
 	//Normalise
 	float length = std::sqrtf(convertedNormal[0] * convertedNormal[0] + convertedNormal[1] * convertedNormal[1] + convertedNormal[2] * convertedNormal[2]);
 	for (unsigned int i = 0; i < 3; i++)
 	{
-		normalPointer[i] = static_cast<unsigned char>((((convertedNormal[i] / length) * 127.0f) + 127.0f));
+		normalPointer[i] = static_cast<char>((((convertedNormal[i]) * 127.0f) + 127.0f));
 	}
 
-	//Sign
-	normalPointer[3] = SCHAR_MAX;
+	normalPointer[3] = static_cast<unsigned char>(0);
 }
 
 //Credit: UnpackTRU (Dunsan), this is customised for C++ with endian swap.

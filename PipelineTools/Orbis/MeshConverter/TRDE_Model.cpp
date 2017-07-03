@@ -76,23 +76,23 @@ void TRDE::loadModel(TRDE::Model& model, std::ifstream& stream)
 				continue;
 
 			stream.seekg(model.m_meshHeader.m_offsetFaceBuffer + (faceGroup.m_indexBufferStartIndex * sizeof(unsigned short)), SEEK_SET);
-			char* faceBuff = nullptr;
+			char* indexBuff = nullptr;
 
 			switch (model.m_meshHeader.m_meshType)
 			{
 			case TRDE::kMeshType::SKELETAL_MESH:
 			case TRDE::kMeshType::STATIC_MESH:
 			{
-				faceBuff = new char[(faceGroup.m_numTris * 3) * sizeof(unsigned short)];
-				stream.read(faceBuff, (faceGroup.m_numTris * 3) * sizeof(unsigned short));
-				model.m_indexBuffers.emplace_back(faceBuff);
+				indexBuff = new char[(faceGroup.m_numTris * 3) * sizeof(unsigned short)];
+				stream.read(indexBuff, (faceGroup.m_numTris * 3) * sizeof(unsigned short));
+				model.m_indexBuffers.emplace_back(indexBuff);
 				break;
 			}
 			case TRDE::kMeshType::TRESS_FX:
 			{
-				faceBuff = new char[(faceGroup.m_numTris * 2) * sizeof(unsigned short)];
-				stream.read(faceBuff, (faceGroup.m_numTris * 2) * sizeof(unsigned short));
-				model.m_indexBuffers.emplace_back(faceBuff);
+				indexBuff = new char[(faceGroup.m_numTris * 2) * sizeof(unsigned short)];
+				stream.read(indexBuff, (faceGroup.m_numTris * 2) * sizeof(unsigned short));
+				model.m_indexBuffers.emplace_back(indexBuff);
 				break;
 			}
 			default:
@@ -144,23 +144,31 @@ void TRDE::loadSkeleton(TRDE::Skeleton& skeleton)
 	{
 		TRDE::Bone bone;
 
-		
 		inputStream3.seekg(0x20, SEEK_CUR);
 		inputStream3.read(reinterpret_cast<char*>(&bone.m_pos[0]), sizeof(float));
 		inputStream3.read(reinterpret_cast<char*>(&bone.m_pos[1]), sizeof(float));
 		inputStream3.read(reinterpret_cast<char*>(&bone.m_pos[2]), sizeof(float));
 		unsigned short temp = 0xFFFF;
 		inputStream3.seekg(12, SEEK_CUR);
-		int parent;
-		inputStream3.read(reinterpret_cast<char*>(&parent), sizeof(int));
-		if (skeleton.m_bones.size() > parent)
-		{
-			bone.m_pos[0] += skeleton.m_bones[parent].m_pos[0];
-			bone.m_pos[1] += skeleton.m_bones[parent].m_pos[1];
-			bone.m_pos[2] += skeleton.m_bones[parent].m_pos[2];
-		}
+		inputStream3.read(reinterpret_cast<char*>(&bone.m_parentIndex), sizeof(int));
 		inputStream3.seekg(20, SEEK_CUR);
 		skeleton.m_bones.push_back(bone);
+	}
+
+	for (unsigned int i = 1; i < numBones; i++)
+	{
+		Bone* currentBone = &skeleton.m_bones[i];
+		if (currentBone->m_parentIndex > -1 && currentBone->m_parentIndex < skeleton.m_bones.size())
+		{
+			currentBone->m_parentBone = &skeleton.m_bones[currentBone->m_parentIndex];
+			currentBone->m_pos[0] += currentBone->m_parentBone->m_pos[0];
+			currentBone->m_pos[1] += currentBone->m_parentBone->m_pos[1];
+			currentBone->m_pos[2] += currentBone->m_parentBone->m_pos[2];
+		}
+		else
+		{
+			assert(false);
+		}
 	}
 
 	inputStream3.close();

@@ -20,11 +20,11 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
-    <ProjectGuid>{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}</ProjectGuid>
+    <ProjectGuid>{D6B45171-42A8-4DCC-8D18-F96E92846CAE}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>DDS2PCD</RootNamespace>
+    <RootNamespace>TRASHDOrbisToPcMeshConverter</RootNamespace>
     <WindowsTargetPlatformVersion>10.0.14393.0</WindowsTargetPlatformVersion>
-    <ProjectName>TRAS.DDS.To.PCD</ProjectName>
+    <ProjectName>MeshConverter</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -140,14 +140,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
+    <ClCompile Include="Converter.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="TRAS_Model.cpp" />
+    <ClCompile Include="TRDE_Model.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="DDS.h" />
-    <ClInclude Include="PCD.h" />
+    <ClInclude Include="Converter.h" />
+    <ClInclude Include="TRAS_Model.h" />
+    <ClInclude Include="TRDE_Model.h" />
+    <ClInclude Include="VectorMath.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

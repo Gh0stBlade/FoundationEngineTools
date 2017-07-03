@@ -1,0 +1,10 @@
+*.tlog
+*.layout
+*.sdf
+*.opendb
+*.ipdb
+*.iobj
+*.idb
+/Debug/*
+/Release/*
+/.vs/*

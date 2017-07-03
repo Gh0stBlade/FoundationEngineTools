@@ -1,11 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
-VisualStudioVersion = 15.0.26206.0
+VisualStudioVersion = 15.0.26430.12
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TRAS.DDS.To.PCD", "TRAS.DDS.To.PCD\TRAS.DDS.To.PCD.vcxproj", "{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PipelineTools", "PipelineTools", "{E1010BCC-ECBB-40C9-A631-74401D641B94}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TRASHD.Orbis.To.Pc.Mesh.Converter", "TRASHD.Orbis.To.Pc.Mesh.Converter\TRASHD.Orbis.To.Pc.Mesh.Converter.vcxproj", "{D6B45171-42A8-4DCC-8D18-F96E92846CAE}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Orbis", "Orbis", "{D0FF3BE8-5714-4F11-A9DF-BB404F793822}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeshConverter", "PipelineTools\Orbis\MeshConverter\MeshConverter.vcxproj", "{D6B45171-42A8-4DCC-8D18-F96E92846CAE}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TextureConverter", "PipelineTools\Orbis\TextureConverter\TextureConverter.vcxproj", "{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,14 +19,6 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Debug|x64.ActiveCfg = Debug|x64
-		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Debug|x64.Build.0 = Debug|x64
-		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Debug|x86.ActiveCfg = Debug|Win32
-		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Debug|x86.Build.0 = Debug|Win32
-		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Release|x64.ActiveCfg = Release|x64
-		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Release|x64.Build.0 = Release|x64
-		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Release|x86.ActiveCfg = Release|Win32
-		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Release|x86.Build.0 = Release|Win32
 		{D6B45171-42A8-4DCC-8D18-F96E92846CAE}.Debug|x64.ActiveCfg = Debug|x64
 		{D6B45171-42A8-4DCC-8D18-F96E92846CAE}.Debug|x64.Build.0 = Debug|x64
 		{D6B45171-42A8-4DCC-8D18-F96E92846CAE}.Debug|x86.ActiveCfg = Debug|Win32
@@ -31,8 +27,21 @@ Global
 		{D6B45171-42A8-4DCC-8D18-F96E92846CAE}.Release|x64.Build.0 = Release|x64
 		{D6B45171-42A8-4DCC-8D18-F96E92846CAE}.Release|x86.ActiveCfg = Release|Win32
 		{D6B45171-42A8-4DCC-8D18-F96E92846CAE}.Release|x86.Build.0 = Release|Win32
+		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Debug|x64.ActiveCfg = Debug|x64
+		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Debug|x64.Build.0 = Debug|x64
+		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Debug|x86.ActiveCfg = Debug|Win32
+		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Debug|x86.Build.0 = Debug|Win32
+		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Release|x64.ActiveCfg = Release|x64
+		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Release|x64.Build.0 = Release|x64
+		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Release|x86.ActiveCfg = Release|Win32
+		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{D0FF3BE8-5714-4F11-A9DF-BB404F793822} = {E1010BCC-ECBB-40C9-A631-74401D641B94}
+		{D6B45171-42A8-4DCC-8D18-F96E92846CAE} = {D0FF3BE8-5714-4F11-A9DF-BB404F793822}
+		{5AA51FE0-6B9F-43EA-8ABB-70493CE4752C} = {D0FF3BE8-5714-4F11-A9DF-BB404F793822}
 	EndGlobalSection
 EndGlobal
