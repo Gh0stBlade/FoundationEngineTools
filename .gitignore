@@ -5,6 +5,11 @@
 *.ipdb
 *.iobj
 *.idb
+*.obj
+*.log
+*.pdb
+*.vcxproj.user
 /Debug/*
 /Release/*
 /.vs/*
+/x64/
