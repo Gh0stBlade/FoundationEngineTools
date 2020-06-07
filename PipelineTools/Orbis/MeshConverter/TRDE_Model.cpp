@@ -106,9 +106,9 @@ void TRDE::loadModel(TRDE::Model& model, std::ifstream& stream)
 void TRDE::loadSkeleton(TRDE::Skeleton& skeleton)
 {
 
-	std::ifstream inputStream3("skeleton.trdemesh", std::ios::binary);
+	std::ifstream inputStream("skeleton.trdemesh", std::ios::binary);
 
-	if (!inputStream3.good())
+	if (!inputStream.good())
 	{
 		std::cout << "Failed to open TRDE Skeleton file!" << std::endl;
 		assert(false);
@@ -122,36 +122,36 @@ void TRDE::loadSkeleton(TRDE::Skeleton& skeleton)
 	unsigned int numBones = 0;
 
 	int numRelocations;
-	inputStream3.read(reinterpret_cast<char*>(&numRelocations), sizeof(unsigned int));
-	inputStream3.seekg(16, SEEK_SET);
+	inputStream.read(reinterpret_cast<char*>(&numRelocations), sizeof(unsigned int));
+	inputStream.seekg(16, SEEK_SET);
 
 	int numRelocations2;
-	inputStream3.read(reinterpret_cast<char*>(&numRelocations2), sizeof(unsigned int));
+	inputStream.read(reinterpret_cast<char*>(&numRelocations2), sizeof(unsigned int));
 
-	inputStream3.seekg(((numRelocations * 8) + 4), SEEK_SET);
-	inputStream3.read(reinterpret_cast<char*>(&offsetBoneInfo), sizeof(unsigned int));
-	inputStream3.read(reinterpret_cast<char*>(&offsetBoneInfo2), sizeof(unsigned int));
+	inputStream.seekg(((numRelocations * 8) + 4), SEEK_SET);
+	inputStream.read(reinterpret_cast<char*>(&offsetBoneInfo), sizeof(unsigned int));
+	inputStream.read(reinterpret_cast<char*>(&offsetBoneInfo2), sizeof(unsigned int));
 
-	inputStream3.seekg(((28 + numRelocations * 8) + numRelocations2 * 4), SEEK_SET);
-	meshBase = static_cast<unsigned int>(inputStream3.tellg());
+	inputStream.seekg(((28 + numRelocations * 8) + numRelocations2 * 4), SEEK_SET);
+	meshBase = static_cast<unsigned int>(inputStream.tellg());
 
-	inputStream3.seekg(meshBase + offsetBoneInfo - 8, SEEK_SET);
+	inputStream.seekg(meshBase + offsetBoneInfo - 8, SEEK_SET);
 
-	inputStream3.read(reinterpret_cast<char*>(&numBones), sizeof(unsigned int));
-	inputStream3.seekg(meshBase + offsetBoneInfo2, SEEK_SET);
+	inputStream.read(reinterpret_cast<char*>(&numBones), sizeof(unsigned int));
+	inputStream.seekg(meshBase + offsetBoneInfo2, SEEK_SET);
 
 	for (unsigned int i = 0; i < numBones; i++)
 	{
 		TRDE::Bone bone;
 
-		inputStream3.seekg(0x20, SEEK_CUR);
-		inputStream3.read(reinterpret_cast<char*>(&bone.m_pos[0]), sizeof(float));
-		inputStream3.read(reinterpret_cast<char*>(&bone.m_pos[1]), sizeof(float));
-		inputStream3.read(reinterpret_cast<char*>(&bone.m_pos[2]), sizeof(float));
+		inputStream.seekg(0x20, SEEK_CUR);
+		inputStream.read(reinterpret_cast<char*>(&bone.m_pos[0]), sizeof(float));
+		inputStream.read(reinterpret_cast<char*>(&bone.m_pos[1]), sizeof(float));
+		inputStream.read(reinterpret_cast<char*>(&bone.m_pos[2]), sizeof(float));
 		unsigned short temp = 0xFFFF;
-		inputStream3.seekg(12, SEEK_CUR);
-		inputStream3.read(reinterpret_cast<char*>(&bone.m_parentIndex), sizeof(int));
-		inputStream3.seekg(20, SEEK_CUR);
+		inputStream.seekg(12, SEEK_CUR);
+		inputStream.read(reinterpret_cast<char*>(&bone.m_parentIndex), sizeof(int));
+		inputStream.seekg(20, SEEK_CUR);
 		skeleton.m_bones.push_back(bone);
 	}
 
@@ -171,7 +171,7 @@ void TRDE::loadSkeleton(TRDE::Skeleton& skeleton)
 		}
 	}
 
-	inputStream3.close();
+	inputStream.close();
 }
 
 std::vector<TRDE::VertexDeclaration> TRDE::ReorderVertDecls(std::vector<TRDE::VertexDeclaration>& vertDecl, TRDE::VertexGroup& currentVertexGroup, char* vertexBuffer, TRDE::VertexDeclarationHeader& vertDeclHeader)
